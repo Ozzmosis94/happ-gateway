@@ -25,52 +25,60 @@ Happ Gateway — самостоятельно развиваемый серви�
 
 Для запуска через Docker необходимы Linux, Docker Engine и Docker Compose. Для сборки из исходников требуется **Go 1.26.4 или новее**.
 
-## Готовый Docker-образ
+## Запуск одной командой (Linux)
 
-После публикации доступен образ `ghcr.io/ozzmosis94/happ-gateway:latest`. GitHub Actions запускает тесты и сборку, затем публикует `latest` при изменениях в `main`, а также образ с тегом коммита. Релизные теги `v*` создают версионные образы. При закрытой видимости пакета потребуется авторизация в GHCR.
-
-Для локальной сборки из исходников вместо загрузки опубликованного образа используйте `docker compose up -d --build`.
-
-## Быстрый запуск в Docker
-
-Клонируйте репозиторий и перейдите в его каталог:
+**Не нужно клонировать репозиторий, создавать `.env` или собирать образ самостоятельно.**
 
 ```bash
-git clone https://github.com/Ozzmosis94/happ-gateway.git
-cd happ-gateway
+docker run -d --name happ-gateway --restart unless-stopped --network host -v happ-gateway-data:/data ghcr.io/ozzmosis94/happ-gateway:latest
 ```
 
-Создайте токен веб-панели и запустите контейнер:
+На этом же компьютере откройте **http://127.0.0.1:8088**. Токен для входа появится в логах:
 
 ```bash
-printf 'WEB_TOKEN=%s\n' "$(openssl rand -hex 24)" > .env
-chmod 600 .env
-docker compose pull
-docker compose up -d
+docker logs happ-gateway
 ```
 
-Проверить состояние контейнера:
+При первом запуске контейнер **автоматически создаёт криптографически случайный токен** и сохраняет его в файле `/data/web-token` внутри Docker volume. При следующих запусках используется тот же токен. Он выводится в логи, поэтому **не предоставляйте посторонним доступ к Docker-логам**.
 
-```bash
-docker compose ps
-docker compose logs -f happ-gateway
-```
+Если хочется указать свой токен, добавьте к команде запуска параметр `-e WEB_TOKEN='длинный-случайный-токен'` (минимум 24 символа).
 
-На Linux веб-панель по умолчанию доступна на **http://127.0.0.1:8088** самого сервера. Для открытия с другого компьютера создайте SSH-туннель:
+Для открытия панели с другого компьютера используйте SSH-туннель:
 
 ```bash
 ssh -L 8088:127.0.0.1:8088 user@server-ip
 ```
 
-После этого откройте `http://127.0.0.1:8088` в браузере на своём компьютере и введите токен из файла `.env`.
+После этого откройте `http://127.0.0.1:8088` в браузере на своём компьютере.
 
-Для остановки:
+Проверить работу:
 
 ```bash
-docker compose down
+docker ps --filter name=happ-gateway
+docker logs -f happ-gateway
 ```
 
-Именованный volume `gateway_state` при обычной остановке сохраняется. **Не используйте `docker compose down -v`**, если хотите сохранить настройки и подписки.
+Остановить и удалить контейнер без удаления подписок:
+
+```bash
+docker rm -f happ-gateway
+```
+
+### Обновление образа
+
+```bash
+docker pull ghcr.io/ozzmosis94/happ-gateway:latest
+docker rm -f happ-gateway
+docker run -d --name happ-gateway --restart unless-stopped --network host -v happ-gateway-data:/data ghcr.io/ozzmosis94/happ-gateway:latest
+```
+
+Благодаря именованному volume `happ-gateway-data` подписки и токен сохранятся. **Не удаляйте этот volume**, если хотите сохранить данные.
+
+### Альтернатива: Docker Compose
+
+Если репозиторий уже склонирован, используйте `docker compose up -d`. Файл `compose.yml` тоже не требует обязательных переменных окружения. Для самостоятельной сборки исходников вместо загрузки образа используйте `docker build -t happ-gateway:local .`.
+
+**Платформы:** Linux amd64 и arm64. Режим `--network host` рассчитан на Linux. Веб-панель и прокси по умолчанию слушают только `127.0.0.1` и не доступны другим устройствам локальной сети без дополнительной настройки.
 
 ## Использование CLI
 

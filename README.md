@@ -39,30 +39,33 @@ happ-gateway --home ./state server
 
 The default per-user data directory is named `happ-gateway`. Existing happ-cli state is **not** automatically moved; transfer a copy of the previous `state.json` and `device.json` to the new directory if needed.
 
-## Docker image
+## One-command Docker startup (Linux)
 
-To build locally instead of pulling the published image, run `docker compose up -d --build`.
-
-After publication, pull the image from GitHub Container Registry: `ghcr.io/ozzmosis94/happ-gateway:latest`. CI checks each change; successful commits to `main` publish `latest` and commit-specific tags. Tagged releases publish a version tag. The image requires access to its public GHCR package or appropriate package permissions.
-
-## Self-hosted web dashboard
+**No repository clone, local build, configuration file, or manual token generation required.**
 
 ```bash
-printf 'WEB_TOKEN=%s\n' "$(openssl rand -hex 24)" > .env
-chmod 600 .env
-docker compose pull
-docker compose up -d
+docker run -d --name happ-gateway --restart unless-stopped --network host -v happ-gateway-data:/data ghcr.io/ozzmosis94/happ-gateway:latest
 ```
 
-The web dashboard listens at `127.0.0.1:8088` on the Linux host by default.
-
-To open it from a workstation:
+On the same Linux machine, open **http://127.0.0.1:8088**. Get the login token from:
 
 ```bash
-ssh -L 8088:127.0.0.1:8088 user@server-ip
+docker logs happ-gateway
 ```
 
-Then open <http://127.0.0.1:8088> in your local browser and paste the token from `.env`. The panel manages SOCKS5 on port 10808 and HTTP proxy on 10809; these proxy ports become active after selecting a server. See [docs/web.md](docs/web.md).
+The gateway creates a cryptographically random token on its first start and persists it at `/data/web-token` inside the named Docker volume. It prints the token to container logs at startup, so **keep Docker logs private**. To set your own token, pass `-e WEB_TOKEN='a-long-random-secret'` to `docker run` instead.
+
+The SOCKS5 and HTTP proxies listen locally on ports 10808 and 10809 after you connect to a server in the dashboard. For remote administration, open an SSH tunnel: `ssh -L 8088:127.0.0.1:8088 user@server-ip`.
+
+Update without losing the saved subscriptions and token:
+
+```bash
+docker pull ghcr.io/ozzmosis94/happ-gateway:latest
+docker rm -f happ-gateway
+docker run -d --name happ-gateway --restart unless-stopped --network host -v happ-gateway-data:/data ghcr.io/ozzmosis94/happ-gateway:latest
+```
+
+Docker Compose is also supported: `docker compose up -d` from the repository directory. Docker host networking requires Linux (or special Docker Desktop configuration). The published image supports linux/amd64 and linux/arm64.
 
 ## Release and dependency policy
 
