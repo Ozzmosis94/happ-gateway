@@ -16,9 +16,9 @@ jobs:
           cache: true
       - run: go test ./...
       - run: go vet ./...
-      - run: go build -o /tmp/raygate ./cmd/raygate
+      - run: go build -o /tmp/happ-gateway ./cmd/happ-gateway
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t raygate:test .
+      - run: docker build -t happ-gateway:test .

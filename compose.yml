@@ -1,17 +1,19 @@
 services:
-  raygate:
-    build: .
+  gateway:
+    image: ghcr.io/ozzmosis94/happ-gateway:latest
+    build:
+      context: .
     restart: unless-stopped
     network_mode: host
     environment:
-      RAYGATE_WEB_TOKEN: "${RAYGATE_WEB_TOKEN:?Set RAYGATE_WEB_TOKEN in .env}"
-      RAYGATE_HOME: /data
-      RAYGATE_WEB_ADDR: "127.0.0.1:8088"
-      RAYGATE_PROXY_LISTEN: "${RAYGATE_PROXY_LISTEN:-127.0.0.1}"
-      RAYGATE_PROXY_ALLOW_LAN: "${RAYGATE_PROXY_ALLOW_LAN:-false}"
-      RAYGATE_PROXY_ALLOW_CIDRS: "${RAYGATE_PROXY_ALLOW_CIDRS:-}"
+      WEB_TOKEN: "${WEB_TOKEN:?Set WEB_TOKEN in .env}"
+      DATA_DIR: /data
+      WEB_ADDR: "${WEB_ADDR:-127.0.0.1:8088}"
+      PROXY_LISTEN: "${PROXY_LISTEN:-127.0.0.1}"
+      PROXY_ALLOW_LAN: "${PROXY_ALLOW_LAN:-false}"
+      PROXY_ALLOW_CIDRS: "${PROXY_ALLOW_CIDRS:-}"
     volumes:
-      - raygate_state:/data
+      - gateway_state:/data
 
 volumes:
-  raygate_state:
+  gateway_state:
