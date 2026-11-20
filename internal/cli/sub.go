@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Ozzmosis94/raygate/internal/profile"
-	"github.com/Ozzmosis94/raygate/internal/store"
+	"github.com/Ozzmosis94/happ-gateway/internal/profile"
+	"github.com/Ozzmosis94/happ-gateway/internal/store"
 )
 
 func newSubCmd(deps *Deps) *cobra.Command {
