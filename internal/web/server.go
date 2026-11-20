@@ -1,17 +1,25 @@
 package web
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 )
 
 //go:embed static/*
 var staticFiles embed.FS
+
+const sessionCookie = "happ_gateway_session"
+const sessionDuration = 30 * 24 * time.Hour
 
 type ErrorResponse struct {
 	Error string `json:"error"`
@@ -20,10 +28,6 @@ type ErrorResponse struct {
 func NewHandler(m *Manager, token string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
 		data, _ := staticFiles.ReadFile("static/index.html")
@@ -31,6 +35,32 @@ func NewHandler(m *Manager, token string) http.Handler {
 	})
 	mux.HandleFunc("GET /app.js", asset("static/app.js", "application/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /style.css", asset("static/style.css", "text/css; charset=utf-8"))
+	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
+		if !sameOrigin(r) {
+			writeError(w, http.StatusForbidden, "cross-origin requests are not allowed")
+			return
+		}
+		var input struct {
+			Token string `json:"token"`
+		}
+		if !decodeJSON(w, r, &input) {
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(input.Token), []byte(token)) != 1 {
+			writeError(w, http.StatusUnauthorized, "invalid access token")
+			return
+		}
+		setSessionCookie(w, r, token, time.Now().Add(sessionDuration))
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("POST /api/logout", func(w http.ResponseWriter, r *http.Request) {
+		if !sameOrigin(r) {
+			writeError(w, http.StatusForbidden, "cross-origin requests are not allowed")
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: sessionCookie, Path: "/api/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: -1})
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	})
 	mux.Handle("/api/", auth(token, apiHandler(m)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -38,6 +68,55 @@ func NewHandler(m *Manager, token string) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		mux.ServeHTTP(w, r)
 	})
+}
+
+func setSessionCookie(w http.ResponseWriter, r *http.Request, secret string, expires time.Time) {
+	exp := strconv.FormatInt(expires.Unix(), 10)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte("happ-gateway-session:" + exp))
+	value := exp + "." + hex.EncodeToString(mac.Sum(nil))
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookie, Value: value, Path: "/api/", HttpOnly: true,
+		Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode,
+		Expires: expires, MaxAge: int(sessionDuration.Seconds()),
+	})
+}
+
+func validSession(value, secret string, now time.Time) bool {
+	exp, sig, ok := strings.Cut(value, ".")
+	if !ok {
+		return false
+	}
+	unix, err := strconv.ParseInt(exp, 10, 64)
+	if err != nil || now.Unix() >= unix || unix > now.Add(sessionDuration).Unix() {
+		return false
+	}
+	provided, err := hex.DecodeString(sig)
+	if err != nil {
+		return false
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte("happ-gateway-session:" + exp))
+	return hmac.Equal(provided, mac.Sum(nil))
+}
+
+func sameOrigin(r *http.Request) bool {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+		return true
+	}
+	if site := r.Header.Get("Sec-Fetch-Site"); site == "cross-site" {
+		return false
+	}
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true // CLI / curl callers do not send Origin.
+	}
+	// Avoid trusting Forwarded headers: the gateway does not proxy requests.
+	wantScheme := "http"
+	if r.TLS != nil {
+		wantScheme = "https"
+	}
+	return origin == wantScheme+"://"+r.Host
 }
 
 func asset(file, kind string) http.HandlerFunc {
@@ -50,12 +129,20 @@ func asset(file, kind string) http.HandlerFunc {
 
 func auth(token string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		provided, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok || subtle.ConstantTimeCompare([]byte(provided), []byte(token)) != 1 {
-			writeError(w, http.StatusUnauthorized, "unauthorized")
+		if !sameOrigin(r) {
+			writeError(w, http.StatusForbidden, "cross-origin requests are not allowed")
 			return
 		}
-		next.ServeHTTP(w, r)
+		provided, hasBearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if hasBearer && subtle.ConstantTimeCompare([]byte(provided), []byte(token)) == 1 {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if cookie, err := r.Cookie(sessionCookie); err == nil && validSession(cookie.Value, token, time.Now()) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		writeError(w, http.StatusUnauthorized, "unauthorized")
 	})
 }
 
