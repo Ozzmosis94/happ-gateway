@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aimuzov/happ-cli/internal/profile"
+	"github.com/Ozzmosis94/raygate/internal/profile"
 )
 
 func TestFormatTrafficWithTotal(t *testing.T) {

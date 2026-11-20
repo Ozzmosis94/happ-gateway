@@ -12,13 +12,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/aimuzov/happ-cli/internal/check"
-	"github.com/aimuzov/happ-cli/internal/config"
-	"github.com/aimuzov/happ-cli/internal/firewall"
-	"github.com/aimuzov/happ-cli/internal/link"
-	"github.com/aimuzov/happ-cli/internal/sysproxy"
-	"github.com/aimuzov/happ-cli/internal/tunnel"
-	"github.com/aimuzov/happ-cli/internal/xray"
+	"github.com/Ozzmosis94/raygate/internal/check"
+	"github.com/Ozzmosis94/raygate/internal/config"
+	"github.com/Ozzmosis94/raygate/internal/firewall"
+	"github.com/Ozzmosis94/raygate/internal/link"
+	"github.com/Ozzmosis94/raygate/internal/sysproxy"
+	"github.com/Ozzmosis94/raygate/internal/tunnel"
+	"github.com/Ozzmosis94/raygate/internal/xray"
 )
 
 // connectOpts groups all connection flags into a single struct.

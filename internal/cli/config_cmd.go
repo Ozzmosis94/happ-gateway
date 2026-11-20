@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 
-	"github.com/aimuzov/happ-cli/internal/config"
+	"github.com/Ozzmosis94/raygate/internal/config"
 )
 
 func newConfigInitCmd() *cobra.Command {

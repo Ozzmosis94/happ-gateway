@@ -1,4 +1,4 @@
-// Command happ is a HAPP-compatible terminal VPN client.
+// Command raygate is a HAPP-compatible terminal VPN client.
 package main
 
 import (
@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/aimuzov/happ-cli/internal/cli"
+	"github.com/Ozzmosis94/raygate/internal/cli"
 )
 
 // version is overridden at build time via -ldflags "-X main.version=...".
