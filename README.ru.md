@@ -29,6 +29,8 @@ Happ Gateway — самостоятельно развиваемый серви�
 
 После публикации доступен образ `ghcr.io/ozzmosis94/happ-gateway:latest`. GitHub Actions запускает тесты и сборку, затем публикует `latest` при изменениях в `main`, а также образ с тегом коммита. Релизные теги `v*` создают версионные образы. При закрытой видимости пакета потребуется авторизация в GHCR.
 
+Для локальной сборки из исходников вместо загрузки опубликованного образа используйте `docker compose up -d --build`.
+
 ## Быстрый запуск в Docker
 
 Клонируйте репозиторий и перейдите в его каталог:
@@ -36,17 +38,15 @@ Happ Gateway — самостоятельно развиваемый серви�
 ```bash
 git clone https://github.com/Ozzmosis94/happ-gateway.git
 cd happ-gateway
-git checkout feat/happ-gateway-standalone
 ```
-
-> Пока рефакторинг находится в черновом Pull Request, команда выше явно выбирает ветку разработки. После объединения изменений с `main` этот шаг будет не нужен.
 
 Создайте токен веб-панели и запустите контейнер:
 
 ```bash
 printf 'WEB_TOKEN=%s\n' "$(openssl rand -hex 24)" > .env
 chmod 600 .env
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 Проверить состояние контейнера:

@@ -41,6 +41,8 @@ The default per-user data directory is named `happ-gateway`. Existing happ-cli s
 
 ## Docker image
 
+To build locally instead of pulling the published image, run `docker compose up -d --build`.
+
 After publication, pull the image from GitHub Container Registry: `ghcr.io/ozzmosis94/happ-gateway:latest`. CI checks each change; successful commits to `main` publish `latest` and commit-specific tags. Tagged releases publish a version tag. The image requires access to its public GHCR package or appropriate package permissions.
 
 ## Self-hosted web dashboard
@@ -48,7 +50,8 @@ After publication, pull the image from GitHub Container Registry: `ghcr.io/ozzmo
 ```bash
 printf 'WEB_TOKEN=%s\n' "$(openssl rand -hex 24)" > .env
 chmod 600 .env
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 The web dashboard listens at `127.0.0.1:8088` on the Linux host by default.
