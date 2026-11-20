@@ -266,6 +266,11 @@ func (m *Manager) Connect(name string, index int) error {
 	if err != nil {
 		return fmt.Errorf("start xray: %w", err)
 	}
+	preference := &store.ConnectionPreference{Subscription: name, LinkHash: store.HashLink(s.Raw)}
+	if err := m.store.SetLastConnection(preference); err != nil {
+		_ = inst.Close()
+		return fmt.Errorf("persist selected server: %w", err)
+	}
 	m.instance = inst
 	m.current = &Connection{Subscription: name, Index: index, Tag: s.Tag, Protocol: s.Protocol, StartedAt: time.Now()}
 	m.health = Health{}
@@ -285,8 +290,50 @@ func (m *Manager) stopLocked() error {
 	m.instance = nil
 	return instance.Close()
 }
-func (m *Manager) Disconnect() error { m.mu.Lock(); defer m.mu.Unlock(); return m.stopLocked() }
-func (m *Manager) Close() error      { return m.Disconnect() }
+// Disconnect deliberately forgets the selected server, so an explicit stop is
+// respected across restarts. Close only stops the core and preserves selection.
+func (m *Manager) Disconnect() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.store.SetLastConnection(nil); err != nil {
+		return fmt.Errorf("persist disconnect: %w", err)
+	}
+	return m.stopLocked()
+}
+func (m *Manager) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.stopLocked()
+}
+
+// Restore reconnects the last explicitly selected server on startup. A stable
+// hash of its original share link prevents accidentally selecting a different
+// server if a subscription was reordered or updated.
+func (m *Manager) Restore() error {
+	m.mu.Lock()
+	preference := m.store.LastConnection()
+	if preference == nil {
+		m.mu.Unlock()
+		return nil
+	}
+	sub, ok := m.store.Find(preference.Subscription)
+	if !ok {
+		m.mu.Unlock()
+		return fmt.Errorf("restore: subscription %q no longer exists", preference.Subscription)
+	}
+	index := 0
+	for i, server := range sub.Servers() {
+		if store.HashLink(server.Raw) == preference.LinkHash {
+			index = i + 1
+			break
+		}
+	}
+	m.mu.Unlock()
+	if index == 0 {
+		return fmt.Errorf("restore: previously selected server is missing from subscription %q; select another server manually", preference.Subscription)
+	}
+	return m.Connect(preference.Subscription, index)
+}
 func (m *Manager) Status() Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()

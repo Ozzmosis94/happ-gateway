@@ -46,6 +46,11 @@ func Serve(ctx context.Context) error {
 		return err
 	}
 	defer manager.Close()
+	if err := manager.Restore(); err != nil {
+		log.Printf("Automatic connection restore failed: %v", err)
+	} else if current := manager.Status().Connection; current != nil {
+		log.Printf("Automatically reconnected to %s (subscription %s)", current.Tag, current.Subscription)
+	}
 	go manager.Monitor(ctx)
 
 	server := &http.Server{
