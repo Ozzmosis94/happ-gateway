@@ -9,7 +9,7 @@ import (
 
 	"github.com/xjasonlyu/tun2socks/v2/engine"
 
-	"github.com/Ozzmosis94/raygate/internal/firewall"
+	"github.com/Ozzmosis94/happ-gateway/internal/firewall"
 )
 
 const happTable = "100" // dedicated routing table for happ-cli routes
