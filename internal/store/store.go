@@ -2,6 +2,8 @@
 package store
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -36,9 +38,22 @@ func (e SubEntry) Servers() []*link.Server {
 	return out
 }
 
+// ConnectionPreference identifies an explicitly selected server by a hash of its
+// share link. Unlike a list index, it remains stable when servers are reordered.
+type ConnectionPreference struct {
+	Subscription string `json:"subscription"`
+	LinkHash     string `json:"linkHash"`
+}
+
+func HashLink(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
+}
+
 type state struct {
-	Active        string     `json:"active,omitempty"`
-	Subscriptions []SubEntry `json:"subscriptions,omitempty"`
+	Active        string                `json:"active,omitempty"`
+	Subscriptions []SubEntry            `json:"subscriptions,omitempty"`
+	Connection    *ConnectionPreference `json:"connection,omitempty"`
 }
 
 // Store is an on-disk collection of subscriptions.
@@ -134,6 +149,9 @@ func (s *Store) Remove(name string) error {
 		return fmt.Errorf("store: subscription %q not found", name)
 	}
 	s.state.Subscriptions = out
+	if s.state.Connection != nil && s.state.Connection.Subscription == name {
+		s.state.Connection = nil
+	}
 	if s.state.Active == name {
 		s.state.Active = ""
 		if len(s.state.Subscriptions) > 0 {
@@ -153,4 +171,31 @@ func (s *Store) SetActive(name string) error {
 	}
 	s.state.Active = name
 	return s.save()
+}
+
+// LastConnection returns the previously selected server, or nil after an explicit
+// disconnect. Only successful Connect calls set this preference.
+func (s *Store) LastConnection() *ConnectionPreference {
+	if s.state.Connection == nil {
+		return nil
+	}
+	c := *s.state.Connection
+	return &c
+}
+
+// SetLastConnection persists the desired connection across container restarts.
+// A nil preference disables automatic reconnect (explicit disconnect).
+func (s *Store) SetLastConnection(c *ConnectionPreference) error {
+	previous := s.state.Connection
+	if c == nil {
+		s.state.Connection = nil
+	} else {
+		copy := *c
+		s.state.Connection = &copy
+	}
+	if err := s.save(); err != nil {
+		s.state.Connection = previous
+		return err
+	}
+	return nil
 }

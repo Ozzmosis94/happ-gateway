@@ -53,7 +53,7 @@ On the same Linux machine, open **http://127.0.0.1:8088**. Get the login token f
 docker logs happ-gateway
 ```
 
-The gateway creates a cryptographically random token on its first start and persists it at `/data/web-token` inside the named Docker volume. It prints the token to container logs at startup, so **keep Docker logs private**. To set your own token, pass `-e WEB_TOKEN='a-long-random-secret'` to `docker run` instead.
+The gateway creates a cryptographically random token on its first start and persists it at `/data/web-token` inside the named Docker volume. The dashboard uses an HttpOnly session cookie to remember login for 30 days, with a sign-out button. It prints the token to container logs at startup, so **keep Docker logs private**. To set your own token, pass `-e WEB_TOKEN='a-long-random-secret'` to `docker run` instead.
 
 The SOCKS5 and HTTP proxies listen locally on ports 10808 and 10809 after you connect to a server in the dashboard. For remote administration, open an SSH tunnel: `ssh -L 8088:127.0.0.1:8088 user@server-ip`.
 
@@ -66,6 +66,12 @@ docker run -d --name happ-gateway --restart unless-stopped --network host -v hap
 ```
 
 Docker Compose is also supported: `docker compose up -d` from the repository directory. Docker host networking requires Linux (or special Docker Desktop configuration). The published image supports linux/amd64 and linux/arm64.
+
+## Automatic connection restore and remembered login
+
+When you select a proxy server in the dashboard, Happ Gateway persists that choice and attempts to reconnect to the **same server** when the container restarts. Server identity is verified by a hash of the original share link rather than a fragile list position. After upgrading from an older image, connect manually **once** to save a selection. Explicitly clicking Disconnect disables autoconnection. If the server was removed from the cached subscription, restore is skipped and logged.
+
+The dashboard remembers login for 30 days using an HttpOnly, SameSite=Strict cookie. Logging out clears it, while changing the administrator token invalidates existing sessions. Local-network HTTP is not encrypted; use HTTPS for untrusted networks.
 
 ## Release and dependency policy
 
@@ -80,4 +86,4 @@ The Web API requires a bearer token. Do not forward the proxy or dashboard ports
 
 ## Scope
 
-The web panel currently supports proxy mode, while the CLI continues to support TUN. The initial iteration does not guarantee persistent connection restoration or automatic server failover.
+The web panel currently supports proxy mode, while the CLI continues to support TUN. The current version attempts to restore the last explicitly selected server at startup but does not implement continuous retry or automatic server failover.

@@ -1,6 +1,5 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
-let token = '';
 let selected = '';
 let subscriptions = [];
 let currentStatus = null;
@@ -14,7 +13,6 @@ async function api(path, options = {}) {
   const response = await fetch('/api' + path, {
     ...options,
     headers: {
-      'Authorization': 'Bearer ' + token,
       ...(options.body ? {'Content-Type':'application/json'} : {}),
       ...(options.headers || {})
     }
@@ -118,12 +116,29 @@ async function loadStatus() {
   $('proxyAddress').textContent = 'SOCKS5 ' + status.proxySocks;
 }
 
+async function openDashboard() {
+  await loadStatus();
+  await loadSubscriptions();
+  $('loginPanel').hidden = true;
+  $('dashboard').hidden = false;
+  $('logoutBtn').hidden = false;
+}
+
 $('loginForm').addEventListener('submit',(event) => {event.preventDefault();action(async () => {
-  token = $('tokenInput').value.trim();
-  await loadStatus();await loadSubscriptions();
-  $('loginPanel').hidden = true;$('dashboard').hidden = false;
+  const entered = $('tokenInput').value.trim();
+  await api('/login', {method:'POST',body:JSON.stringify({token:entered})});
   $('tokenInput').value = '';
+  await openDashboard();
 },'Авторизация успешна.');});
+
+$('logoutBtn').addEventListener('click', () => action(async () => {
+  await api('/logout', {method:'POST',body:'{}'});
+  $('loginPanel').hidden = false;
+  $('dashboard').hidden = true;
+  $('logoutBtn').hidden = true;
+  currentStatus = null;
+  notice('Сессия завершена.');
+}));
 $('subSelect').addEventListener('change', () => action(async () => {selected=$('subSelect').value;renderSubscriptionMeta();await loadServers();}));
 $('refreshBtn').addEventListener('click', () => action(loadSubscriptions,'Список обновлён.'));
 $('addForm').addEventListener('submit',(event) => {event.preventDefault();action(async () => {
@@ -145,4 +160,19 @@ $('deleteBtn').addEventListener('click',() => {if(!selected || !confirm(`Уда�
   selected='';await loadStatus();await loadSubscriptions();
 },'Подписка удалена.');});
 $('disconnectBtn').addEventListener('click',() => action(async () => {await api('/disconnect',{method:'POST'});await loadStatus();await loadServers();},'Прокси остановлен.'));
-setInterval(() => {if(token && !$('dashboard').hidden){loadStatus().catch((error) => notice(error.message,true));}},10000);
+setInterval(() => {
+  if ($('dashboard').hidden) return;
+  loadStatus().catch((error) => {
+    if (error.status === 401) {
+      $('dashboard').hidden = true;
+      $('loginPanel').hidden = false;
+      $('logoutBtn').hidden = true;
+    }
+    notice(error.message,true);
+  });
+},10000);
+
+// A session cookie survives page refreshes, tab closure and container restarts.
+openDashboard().catch((error) => {
+  if (error.status !== 401) notice(error.message, true);
+});
