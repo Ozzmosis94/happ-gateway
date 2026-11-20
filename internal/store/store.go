@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/aimuzov/happ-cli/internal/link"
-	"github.com/aimuzov/happ-cli/internal/profile"
+	"github.com/Ozzmosis94/raygate/internal/link"
+	"github.com/Ozzmosis94/raygate/internal/profile"
 )
 
 // SubEntry is one stored subscription and its cached links.
@@ -53,7 +53,7 @@ func DefaultDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "happ-cli"), nil
+	return filepath.Join(base, "raygate"), nil
 }
 
 // Open loads the store rooted at dir, creating an empty one if none exists.

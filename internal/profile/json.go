@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/aimuzov/happ-cli/internal/link"
+	"github.com/Ozzmosis94/raygate/internal/link"
 )
 
 // xrayEntry is a single config entry from the Incy JSON subscription array.

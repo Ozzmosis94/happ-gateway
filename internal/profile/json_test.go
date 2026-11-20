@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/aimuzov/happ-cli/internal/link"
+	"github.com/Ozzmosis94/raygate/internal/link"
 )
 
 func TestParseJSONBody_ValidArray(t *testing.T) {
