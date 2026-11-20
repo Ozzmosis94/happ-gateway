@@ -3,21 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Happ Web · Dashboard</title>
+  <title>Happ Gateway · Dashboard</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
   <main class="layout">
     <header class="header">
-      <div class="brand"><div class="logo">H</div><div><strong>Happ Web</strong><small>Локальная панель управления</small></div></div>
+      <div class="brand"><div class="logo">H</div><div><strong>Happ Gateway</strong><small>Локальная панель управления</small></div></div>
       <div id="connectionBadge" class="badge">Не подключён</div>
     </header>
     <section class="intro">
       <div><span class="eyebrow">HOME NETWORK / PROXY</span><h1>Управление подключением</h1><p>Подписки, серверы и состояние прокси в одном месте.</p></div>
     </section>
     <section id="loginPanel" class="panel login">
-      <h2>Авторизация</h2><p class="muted">Введи токен из переменной <code>RAYGATE_WEB_TOKEN</code>. Он хранится только в памяти этой вкладки.</p>
+      <h2>Авторизация</h2><p class="muted">Введи токен из переменной <code>WEB_TOKEN</code>. Он хранится только в памяти этой вкладки.</p>
       <form id="loginForm" class="inline"><input id="tokenInput" type="password" required autocomplete="off" placeholder="Токен доступа"><button type="submit" class="primary">Войти</button></form>
     </section>
     <section id="dashboard" hidden>
@@ -43,7 +43,7 @@
       </div>
     </section>
     <p id="notice" class="notice" role="status" aria-live="polite"></p>
-    <footer>Happ Web · Режим SOCKS5 / HTTP proxy · Без изменения маршрутизации хоста</footer>
+    <footer>Happ Gateway · Режим SOCKS5 / HTTP proxy · Без изменения маршрутизации хоста</footer>
   </main>
 </body>
 </html>

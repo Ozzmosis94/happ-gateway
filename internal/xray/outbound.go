@@ -3,7 +3,7 @@ package xray
 import (
 	"fmt"
 
-	"github.com/Ozzmosis94/raygate/internal/link"
+	"github.com/Ozzmosis94/happ-gateway/internal/link"
 )
 
 // Supported reports whether xray-core can dial the given protocol as an

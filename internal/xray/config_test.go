@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Ozzmosis94/raygate/internal/link"
+	"github.com/Ozzmosis94/happ-gateway/internal/link"
 )
 
 // get navigates a decoded JSON tree using a dotted path with numeric indices,

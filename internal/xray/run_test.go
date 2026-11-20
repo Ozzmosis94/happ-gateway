@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Ozzmosis94/raygate/internal/link"
+	"github.com/Ozzmosis94/happ-gateway/internal/link"
 )
 
 func freePort(t *testing.T) int {
