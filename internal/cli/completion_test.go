@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/aimuzov/happ-cli/internal/link"
-	"github.com/aimuzov/happ-cli/internal/store"
+	"github.com/Ozzmosis94/happ-gateway/internal/link"
+	"github.com/Ozzmosis94/happ-gateway/internal/store"
 )
 
 func TestServerTagsCarryTagAndProtocol(t *testing.T) {

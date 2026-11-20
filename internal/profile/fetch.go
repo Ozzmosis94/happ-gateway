@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aimuzov/happ-cli/internal/link"
+	"github.com/Ozzmosis94/happ-gateway/internal/link"
 )
 
 // Subscription is the result of fetching and parsing a subscription URL,

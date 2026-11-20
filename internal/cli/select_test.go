@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/aimuzov/happ-cli/internal/link"
+	"github.com/Ozzmosis94/happ-gateway/internal/link"
 )
 
 func servers() []*link.Server {

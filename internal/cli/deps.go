@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/aimuzov/happ-cli/internal/device"
-	"github.com/aimuzov/happ-cli/internal/profile"
-	"github.com/aimuzov/happ-cli/internal/store"
+	"github.com/Ozzmosis94/happ-gateway/internal/device"
+	"github.com/Ozzmosis94/happ-gateway/internal/profile"
+	"github.com/Ozzmosis94/happ-gateway/internal/store"
 )
 
 // Store provides subscription storage. Implemented by *store.Store.

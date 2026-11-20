@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/aimuzov/happ-cli/internal/link"
+	"github.com/Ozzmosis94/happ-gateway/internal/link"
 )
 
 // Options controls the inbounds and logging of the generated config.

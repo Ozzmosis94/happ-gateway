@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/aimuzov/happ-cli/internal/link"
+	"github.com/Ozzmosis94/happ-gateway/internal/link"
 )
 
 func TestLANInboundsAndSourceRouting(t *testing.T) {

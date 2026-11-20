@@ -1,298 +1,192 @@
-<p align="center">
-  <img src="assets/banner.png" alt="happ-cli" width="800" />
-</p>
+# Happ Gateway
 
-# happ-cli
+[Русский](README.ru.md) | [English](README.md)
 
-[English](README.md) | **Русский**
+> **Неофициальный проект.** Happ Gateway — независимо разрабатываемый шлюз для подписок, совместимых с Happ. Он **не является официальным продуктом Happ**, не связан с разработчиками или издателем Happ и не поддерживается ими. Название Happ используется только для обозначения совместимости с подписками.
 
-Терминальный VPN-клиент, совместимый с профилями подписок [HAPP](https://happ.su).
-Забирает подписку, парсит share-ссылки (VLESS / VMess / Trojan / Shadowsocks) и
-поднимает соединение через встроенный
-[xray-core](https://github.com/XTLS/Xray-core) — как локальный прокси, системный
-прокси или полноценный системный VPN (TUN).
+Happ Gateway — самостоятельно развиваемый сервис для управления прокси и подписками. Включает CLI на Go, встроенное ядро **Xray-core**, HTTP API и веб-панель с авторизацией по токену. Проект не синхронизирует автоматически код и релизы прежних форков.
 
-Единый самодостаточный бинарник: xray-core и tun2socks встроены, внешних бинарей
-не требуется.
+> **Происхождение кода:** проект создан на основе публичного кода happ-cli/proxray. Подробнее об авторах и правах — в [NOTICE.md](NOTICE.md). Отсутствие явно указанной лицензии у исходных проектов не означает разрешения на свободное распространение их кода и собранных бинарников.
 
 ## Возможности
 
-| | happ-cli | Другие HAPP-клиенты |
-|---|:---:|:---:|
-| Единый бинарник без зависимостей | ✅ | ❌ |
-| JSON-подписки (Incy-формат) | ✅ | ❌ |
-| Системный TUN VPN | ✅ | ❌ (только прокси) |
-| TUN-direct (ICMP/ping работает) | ✅ | ❌ |
-| Поддержка роутеров (MIPS/ARM, iptables, обход LAN) | ✅ | ❌ |
-| Авто-фейловер (round-robin по серверам) | ✅ | ❌ |
-| Health-чеки с отслеживанием серверов | ✅ | ❌ |
-| YAML-конфиг | ✅ | ❌ |
-| Защита от DNS-утечек (опционально) | ✅ | ❌ |
+- Добавление, обновление, удаление и активация Happ-совместимых подписок.
+- Обработка подписок в формате Base64, списка ссылок и поддерживаемых JSON-профилей.
+- Просмотр доступных серверов и подключение к выбранному.
+- CLI с режимами SOCKS5/HTTP, TUN и TUN-direct.
+- Веб-панель и HTTP API для управления подписками и прокси.
+- Отображение состояния ядра, результата проверки соединения и внешнего IP.
+- Запуск через Docker Compose на Linux, сохранение настроек между перезапусками контейнера.
+- Локальный доступ по умолчанию, дополнительная раздача прокси в доверенную LAN по явному разрешению.
 
-## Поддерживаемые протоколы
+**Важно:** веб-панель в текущем MVP поддерживает режим прокси. Режимы TUN и TUN-direct доступны только через CLI.
 
-| Протокол | Парсинг | Подключение | Транспорты | Шифрование |
-|----------|:---:|:---:|------------|----------|
-| **VLESS** | ✅ | ✅ | TCP, WS, gRPC, HTTP/2 | Reality, TLS, XTLS Vision |
-| **VMess** | ✅ | ✅ | TCP, WS, gRPC, HTTP/2 | TLS |
-| **Trojan** | ✅ | ✅ | TCP, WS | TLS |
-| **Shadowsocks** | ✅ | ✅ | TCP | AEAD |
-| **Hysteria2** | ✅ | ❌ | — | — |
+## Требования
 
-## Режимы подключения
+Для запуска через Docker необходимы Linux, Docker Engine и Docker Compose. Для сборки из исходников требуется **Go 1.26.4 или новее**.
 
-| Режим | Root | ICMP | DNS-прокси | Сценарий |
-|------|:---:|:---:|:---:|----------|
-| `proxy` | ❌ | ❌ | ✅ | Браузер/CLI через SOCKS5 |
-| `proxy --system-proxy` | sudo | ❌ | ✅ | Системный прокси macOS (уживается с VPN) |
-| `tun` | sudo | ❌ | ✅ | Полный системный VPN через tun2socks |
-| **`tun-direct`** | sudo | ✅ | ✅ | Полный VPN с поддержкой ICMP (xray TUN, без SOCKS) |
+## Готовый Docker-образ
 
-## Как это устроено
+После публикации доступен образ `ghcr.io/ozzmosis94/happ-gateway:latest`. GitHub Actions запускает тесты и сборку, затем публикует `latest` при изменениях в `main`, а также образ с тегом коммита. Релизные теги `v*` создают версионные образы. При закрытой видимости пакета потребуется авторизация в GHCR.
 
-```
-subscription URL
-      │  profile.Fetch (INCY-заголовки)
-      ▼
-base64 или JSON ──► link.Parse / json.go ──► []link.Server
-                                            │ xray.BuildConfig
-                                            ▼
-                                    конфиг xray-core (JSON)
-                                            │ xray.Start (встроенное ядро)
-              ┌─────────────────────────────┼─────────────────────────────┐
-              ▼                             ▼                             ▼
-      proxy: SOCKS5/HTTP          --system-proxy: networksetup     tun: tun2socks
-      на 127.0.0.1                ставит системный SOCKS/HTTP       + таблица маршрутов
-      (без root)                  (sudo)                           (sudo, utun)
+Для локальной сборки из исходников вместо загрузки опубликованного образа используйте `docker compose up -d --build`.
+
+## Быстрый запуск в Docker
+
+Клонируйте репозиторий и перейдите в его каталог:
+
+```bash
+git clone https://github.com/Ozzmosis94/happ-gateway.git
+cd happ-gateway
 ```
 
-## Установка
+Создайте токен веб-панели и запустите контейнер:
 
-### mise (рекомендуется)
-
-Готовые бинарники публикуются в GitHub Releases. Ставятся через
-[mise](https://mise.jdx.dev) — без установки Go. Внутри архива бинарник называется
-`happ` (не `happ-cli`), поэтому укажи `exe=happ`:
-
-```sh
-mise use -g "github:aimuzov/happ-cli[exe=happ]@latest"
+```bash
+printf 'WEB_TOKEN=%s\n' "$(openssl rand -hex 24)" > .env
+chmod 600 .env
+docker compose pull
+docker compose up -d
 ```
 
-или зафиксировать в `mise.toml`:
+Проверить состояние контейнера:
 
-```toml
-[tools]
-"github:aimuzov/happ-cli" = { version = "latest", exe = "happ" }
+```bash
+docker compose ps
+docker compose logs -f happ-gateway
 ```
 
-Бэкенд `ubi` работает так же и с теми же релизами, если он тебе привычнее:
-`ubi:aimuzov/happ-cli[exe=happ]`.
+На Linux веб-панель по умолчанию доступна на **http://127.0.0.1:8088** самого сервера. Для открытия с другого компьютера создайте SSH-туннель:
 
-> При частых установках задай `MISE_GITHUB_TOKEN` (или `GITHUB_TOKEN`), чтобы не
-> упереться в лимиты GitHub API.
-
-### Ручная загрузка
-
-Скачай архив под свою ОС/архитектуру со страницы
-[Releases](https://github.com/aimuzov/happ-cli/releases), распакуй и положи
-бинарник `happ` в `PATH`.
-
-| Система | Архитектура | Скачать |
-|---------|-------------|---------|
-| **Linux** | amd64 | [`happ-linux-amd64.tar.gz`](https://github.com/aimuzov/happ-cli/releases/latest/download/happ-linux-amd64.tar.gz) |
-| | arm64 | [`happ-linux-arm64.tar.gz`](https://github.com/aimuzov/happ-cli/releases/latest/download/happ-linux-arm64.tar.gz) |
-| | armv5 | [`happ-linux-armv5.tar.gz`](https://github.com/aimuzov/happ-cli/releases/latest/download/happ-linux-armv5.tar.gz) |
-| | armv6 | [`happ-linux-armv6.tar.gz`](https://github.com/aimuzov/happ-cli/releases/latest/download/happ-linux-armv6.tar.gz) |
-| | armv7 | [`happ-linux-armv7.tar.gz`](https://github.com/aimuzov/happ-cli/releases/latest/download/happ-linux-armv7.tar.gz) |
-| | mips (softfloat) | [`happ-linux-mips.tar.gz`](https://github.com/aimuzov/happ-cli/releases/latest/download/happ-linux-mips.tar.gz) |
-| | mipsle (softfloat) | [`happ-linux-mipsle.tar.gz`](https://github.com/aimuzov/happ-cli/releases/latest/download/happ-linux-mipsle.tar.gz) |
-| **macOS** | amd64 (Intel) | [`happ-darwin-amd64.tar.gz`](https://github.com/aimuzov/happ-cli/releases/latest/download/happ-darwin-amd64.tar.gz) |
-| | arm64 (Apple Silicon) | [`happ-darwin-arm64.tar.gz`](https://github.com/aimuzov/happ-cli/releases/latest/download/happ-darwin-arm64.tar.gz) |
-| **Windows** | amd64 | [`happ-windows-amd64.zip`](https://github.com/aimuzov/happ-cli/releases/latest/download/happ-windows-amd64.zip) |
-| | 386 | [`happ-windows-386.zip`](https://github.com/aimuzov/happ-cli/releases/latest/download/happ-windows-386.zip) |
-
-### Из исходников
-
-```sh
-git clone https://github.com/aimuzov/happ-cli
-cd happ-cli
-go build -o happ ./cmd/happ/   # нужен Go 1.26+
+```bash
+ssh -L 8088:127.0.0.1:8088 user@server-ip
 ```
 
-Полученный бинарник `happ` самодостаточен.
+После этого откройте `http://127.0.0.1:8088` в браузере на своём компьютере и введите токен из файла `.env`.
 
-> **`go install github.com/aimuzov/happ-cli@latest` не работает.** Сборке нужна
-> директива `replace` в `go.mod` (примиряет xray-core и tun2socks по gvisor), а
-> `go install pkg@version` игнорирует `replace`. Используй готовый бинарник либо
-> клонируй и собирай.
+Для остановки:
 
-## Использование
-
-### Подписки
-
-```sh
-happ sub add https://panel.example/sub/TOKEN --name myvpn   # добавить (станет активной)
-happ sub list                                               # список подписок
-happ sub update [name]                                      # обновить (по умолчанию активную)
-happ sub use <name>                                         # сделать подписку активной
-happ sub rm <name>                                          # удалить
+```bash
+docker compose down
 ```
 
-`sub list` показывает трафик и срок из заголовков подписки:
+Именованный volume `gateway_state` при обычной остановке сохраняется. **Не используйте `docker compose down -v`**, если хотите сохранить настройки и подписки.
 
-```
-ACTIVE  NAME    TITLE       SERVERS  TRAFFIC          EXPIRES
-*       myvpn   My VPN      12       12.4 GB / 200 GB  2026-09-01
-```
+## Использование CLI
 
-### Серверы
+Собрать бинарник самостоятельно:
 
-```sh
-happ list           # серверы активной подписки
-happ list --sub x   # серверы конкретной подписки
-```
-
-```
-#  PROTOCOL                 ADDRESS              TAG
-1  vless                    de.example:443       🇩🇪 Германия
-2  trojan                   nl.example:443       🇳🇱 Нидерланды
-3  hysteria2 (unsupported)  hy.example:443       Fast HY2
-```
-
-### Подключение
-
-`connect` работает в foreground до прерывания `Ctrl+C`. Аргумент `selector`
-выбирает сервер: пусто = первый, число = индекс (1-based) из `happ list`, либо
-подстрока тега без учёта регистра.
-
-```sh
-happ connect                 # первый сервер, режим proxy
-happ connect 2               # сервер №2
-happ connect germany         # первый сервер с тегом, содержащим "germany"
-
-sudo happ connect 1 --system-proxy   # браузеры/приложения через системный прокси (без правки маршрутов)
-sudo happ connect 1 --mode tun       # полноценный системный VPN
-```
-
-В обычном proxy-режиме настрой приложения на `socks5://127.0.0.1:10808`
-(в Firefox включи «Proxy DNS when using SOCKS v5»).
-
-### Флаги `connect`
-
-| Флаг             | По умолчанию | Назначение                                                 |
-| ---------------- | ------------ | ---------------------------------------------------------- |
-| `-m, --mode`     | `proxy`      | `proxy` или `tun`                                          |
-| `--socks`        | `10808`      | порт локального SOCKS5                                     |
-| `--http`         | `10809`      | порт локального HTTP (режим proxy)                         |
-| `--system-proxy` | `false`      | выставить системный прокси macOS (режим proxy, нужен sudo) |
-| `--no-routing`    | `false`      | создать TUN без правки маршрутов |
-| `--skip-firewall`  | `false`      | пропустить iptables-правила (tun/tun-direct) |
-| `--health-check`   | `false`      | проверка соединения при старте + периодически; выход при ошибке |
-| `--dns-proxy`       | `true`       | DNS через прокси (выключить: `--dns-proxy=false` для локального DNS) |
-| `--sub`          | активная     | имя подписки                                               |
-
-### Три способа завернуть трафик — сравнение
-
-- **`connect` (proxy)** — только приложения, явно настроенные на
-  `socks5://127.0.0.1:10808` (например, Firefox с remote DNS). Без root.
-- **`connect --system-proxy`** — выставляет на всех включённых сетевых сервисах
-  системный SOCKS (порт `--socks`) и HTTP/HTTPS (порт `--http`), поэтому
-  Safari/Chrome и приложения, игнорирующие SOCKS, идут через прокси. **Не трогает**
-  таблицу маршрутов, поэтому **уживается с другим активным VPN**. Нужен `sudo`;
-  прежние настройки прокси восстанавливаются при выходе. Если сессию убили
-  (`kill -9`) и прокси завис — сбросить командой `sudo happ system-proxy off`.
-- **`connect --mode tun`** — полноценный системный VPN через utun, перехватывает
-  весь трафик. Нужен `sudo`. Если параллельно активен другой VPN — сначала
-  отключи его, чтобы туннели не дрались за маршруты/DNS.
-
-### Прочие команды
-
-```sh
-happ config [selector]       # вывести сгенерированный конфиг xray-core (отладка)
-happ system-proxy off        # аварийный сброс системного прокси (sudo)
-```
-
-## Конфигурация и хранение
-
-Состояние (подписки и кэш ссылок) хранится в `state.json` в конфиг-каталоге
-пользователя (`~/Library/Application Support/happ-cli` на macOS),
-переопределяется глобальным флагом `--home`.
-
-## Детали режима TUN
-
-### macOS
-
-1. адрес сервера резолвится в IP, и на каждый добавляется host-маршрут к текущему
-   next-hop (физический шлюз либо интерфейс уже активного VPN) — чтобы соединение
-   прокси с сервером не зациклилось обратно в туннель;
-2. создаётся устройство `utun`, и tun2socks форвардит его трафик на локальный
-   SOCKS, который отдаёт xray;
-3. дефолтный маршрут перекрывается двумя `/1`-маршрутами на utun;
-4. глобальный IPv6 заворачивается в `lo0` (блокируется);
-5. при `Ctrl+C` все маршруты снимаются в обратном порядке.
-
-### Linux
-
-1. IP серверов пиннуются к текущему next-hop (как на macOS);
-2. TUN-устройство создаётся через `/dev/net/tun`;
-3. **локальные подсети сохраняются** — `192.168.0.0/16`, `172.16.0.0/12`,
-   `10.0.0.0/8`, link-local и multicast остаются на физическом интерфейсе,
-   чтобы LAN и админка роутера оставались доступны;
-4. дефолтный маршрут перекрывается двумя `/1`-маршрутами на TUN-устройство;
-5. флаг `--no-routing` пропускает правку маршрутов (только создаёт TUN),
-   полезно на роутерах, где маршруты управляются внешне.
-
-## Ограничения
-
-- **Hysteria2** серверы парсятся и отображаются, но подключиться нельзя (xray-core не имеет outbound для Hysteria2).
-- **`--system-proxy` только для macOS** (использует `networksetup`).
-- **IPv6 заблокирован в TUN/TUN-direct** (путь прокси — IPv4); IPv6-only ресурсы недоступны.
-- `connect` работает в **foreground**; фонового демона пока нет.
-- `kill -9` пропускает очистку, но stale-маршруты чистятся автоматически при следующем `connect`. Для ручной очистки: `sudo happ cleanup-tun`.
-
-## Структура проекта
-
-| Пакет               | Назначение                                                   |
-| ------------------- | ------------------------------------------------------------ |
-| `cmd/happ`          | точка входа                                                  |
-| `internal/check`    | проверка соединения (Cloudflare trace)                       |
-| `internal/cli`      | команды cobra                                                |
-| `internal/config`   | YAML-конфигурация                                            |
-| `internal/device`   | идентификация устройства (HWID + UUID)                       |
-| `internal/firewall` | iptables FORWARD (Linux)                                     |
-| `internal/link`     | парсинг share-ссылок (vless/vmess/trojan/ss/hysteria2)       |
-| `internal/profile`  | загрузка подписки, декод base64/JSON + заголовков            |
-| `internal/store`    | хранение подписок, кэша ссылок, last-used трекинг            |
-| `internal/tunnel`   | режим TUN: tun2socks + маршруты (macOS + Linux)              |
-| `internal/sysproxy` | системный прокси macOS через networksetup                    |
-| `internal/xray`     | сборка конфига xray-core, запуск встроенного ядра            |
-
-## Разработка
-
-```sh
-go test ./...        # юнит-тесты + реальный end-to-end тест прокси
+```bash
+go test ./...
 go vet ./...
+go build -o happ-gateway ./cmd/happ-gateway
 ```
 
-Интеграционный тест xray поднимает реальный Shadowsocks-сервер и клиента,
-собранного из `link.Server`, и проверяет, что HTTP-запрос через SOCKS-inbound
-клиента доходит до цели сквозь прокси.
+Примеры команд:
 
-> xray-core и tun2socks требуют разные версии `gvisor.dev/gvisor`; директива
-> `replace` в `go.mod` фиксирует gvisor на версии, с которой собираются оба. Не
-> удаляй её — см. комментарий рядом.
+```bash
+# Добавить подписку
+./happ-gateway sub add https://example.com/sub/TOKEN --name home
 
-### Релизы
+# Просмотреть подписки
+./happ-gateway sub list
 
-Релизы собирает [GoReleaser](https://goreleaser.com) в CI по пушу тега:
+# Посмотреть серверы активной подписки
+./happ-gateway list
 
-```sh
-git tag v0.1.0
-git push origin v0.1.0
+# Подключиться к серверу №1
+./happ-gateway connect 1
+
+# Запустить веб-сервер
+WEB_TOKEN="$(openssl rand -hex 24)" ./happ-gateway server
 ```
 
-Workflow `build-release` (`.github/workflows/build-release.yml`) собирает
-бинарники под 12 комбинаций ОС/архитектуры (linux/darwin/windows,
-amd64/arm64/armv5-7/mips/mipsle) и публикует их в GitHub Releases. Там сборка
-учитывает `replace` из `go.mod` (happ-cli — главный модуль). Локальный прогон:
-`goreleaser release --clean --snapshot`.
+По умолчанию CLI сохраняет пользовательскую конфигурацию в каталоге `happ-gateway` внутри системного каталога настроек. Указать другой каталог можно через `--home`.
+
+**Миграция со старого happ-cli:** состояние автоматически не переносится. Для сохранения подписок и идентификатора устройства можно скопировать `state.json` и `device.json` из старого каталога настроек в новый. Сохраните резервную копию до миграции.
+
+## Доступ к SOCKS5 и HTTP-прокси
+
+После выбора сервера в веб-панели создаются локальные прокси:
+
+| Тип | Адрес по умолчанию |
+|---|---|
+| SOCKS5 | `127.0.0.1:10808` |
+| HTTP | `127.0.0.1:10809` |
+
+В Docker используется `network_mode: host` на Linux. Само наличие прокси **не перенаправляет автоматически** трафик всех контейнеров или устройств: клиентам нужно явно указать адрес прокси.
+
+Чтобы открыть прокси для доверенных устройств в локальной сети, добавьте в `.env`:
+
+```dotenv
+# Укажите реальный частный IPv4-адрес Linux-сервера
+PROXY_LISTEN=192.168.1.210
+PROXY_ALLOW_LAN=true
+
+# Необязательный список разрешённых IPv4-подсетей
+PROXY_ALLOW_CIDRS=192.168.1.0/24,172.18.0.0/16
+```
+
+Пересоздайте контейнер:
+
+```bash
+docker compose up -d --force-recreate
+```
+
+Пример проверки из разрешённой сети:
+
+```bash
+curl --socks5-hostname 192.168.1.210:10808 https://api.ipify.org
+```
+
+Указанные адреса и подсети — **примеры**, замените их настройками своей сети. Не выставляйте прокси-порты в интернет и ограничьте доступ правилами межсетевого экрана.
+
+## Веб-API
+
+Запросы к `/api/*` требуют заголовка `Authorization: Bearer <токен>`.
+
+| Метод | Путь | Описание |
+|---|---|---|
+| GET | `/api/status` | Состояние ядра, проверка доступности, внешний IP |
+| GET | `/api/subscriptions` | Список подписок без секретных URL |
+| POST | `/api/subscriptions` | Добавить подписку |
+| GET | `/api/subscriptions/{name}/servers` | Список серверов |
+| POST | `/api/subscriptions/{name}/activate` | Сделать подписку активной |
+| POST | `/api/subscriptions/{name}/refresh` | Обновить подписку |
+| DELETE | `/api/subscriptions/{name}` | Удалить подписку |
+| POST | `/api/connect` | Подключиться к выбранному серверу |
+| POST | `/api/disconnect` | Отключиться |
+
+Пример проверки статуса:
+
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://127.0.0.1:8088/api/status
+```
+
+Подробнее о запросах и поведении сервиса — в [документации веб-API](docs/web.md).
+
+## Обновления и релизы
+
+Проект развивается независимо от прежних форков. **Xray-core встроен в Go-бинарник**, поэтому обновление ядра требует изменения версии модуля в `go.mod`, новой сборки и проверки совместимости.
+
+Dependabot проверяет Go-зависимости и GitHub Actions еженедельно. Сборки и тесты выполняются в собственном CI проекта. Публикация производных бинарников и Docker-образов должна учитывать права авторов исходного кода.
+
+## Безопасность
+
+- Веб-API защищён токеном, но не должен публиковаться через незащищённый HTTP в интернете.
+- SOCKS5/HTTP-прокси **не имеют парольной авторизации**.
+- Сохраняйте `.env` и volume с подписками в защищённом месте: ссылки подписок и параметры серверов могут содержать секреты.
+- При удалённом доступе используйте SSH-туннель или защищённый обратный прокси с HTTPS.
+- Не перенаправляйте порты 8088, 10808 и 10809 на публичном маршрутизаторе.
+
+## Текущие ограничения
+
+- В веб-панели пока доступен только прокси-режим; TUN остаётся в CLI.
+- Запущенное ядро не гарантирует доступности удалённого сервера. Состояние соединения дополнительно проверяется сетевым запросом через SOCKS5.
+- Автоматическое восстановление соединения после перезапуска, плановое обновление подписок, автоматическое переключение серверов и статистика трафика ядра пока не реализованы.
+- Рефакторинг находится в стадии MVP и требует проверки на целевом сервере.
+
+---
+
+**Документация:** [English README](README.md) · [Веб-API](docs/web.md) · [Происхождение кода и права](NOTICE.md)
