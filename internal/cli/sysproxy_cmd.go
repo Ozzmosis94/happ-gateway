@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/aimuzov/happ-cli/internal/sysproxy"
+	"github.com/Ozzmosis94/raygate/internal/sysproxy"
 )
 
 func newSysProxyCmd() *cobra.Command {

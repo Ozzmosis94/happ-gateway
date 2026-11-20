@@ -11,9 +11,9 @@ import (
 
 	"github.com/mattn/go-isatty"
 
-	"github.com/aimuzov/happ-cli/internal/link"
-	"github.com/aimuzov/happ-cli/internal/store"
-	"github.com/aimuzov/happ-cli/internal/xray"
+	"github.com/Ozzmosis94/raygate/internal/link"
+	"github.com/Ozzmosis94/raygate/internal/store"
+	"github.com/Ozzmosis94/raygate/internal/xray"
 )
 
 // Default local proxy ports, shared with the connect command's flag defaults.

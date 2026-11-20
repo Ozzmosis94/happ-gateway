@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/aimuzov/happ-cli/internal/xray"
+	"github.com/Ozzmosis94/raygate/internal/xray"
 )
 
 func newListCmd(deps *Deps) *cobra.Command {

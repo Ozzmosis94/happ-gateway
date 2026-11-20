@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/aimuzov/happ-cli/internal/link"
+	"github.com/Ozzmosis94/raygate/internal/link"
 )
 
 func TestBuildSudoArgs(t *testing.T) {
