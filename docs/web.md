@@ -1,4 +1,4 @@
-# Happ Web (MVP)
+# Happ Gateway (MVP)
 
 An opt-in, authenticated web UI around the existing `profile`, `store`, `check`, and embedded `xray` packages. Proxy mode only: **no TUN, host routing, or firewall modifications**.
 
@@ -7,12 +7,12 @@ An opt-in, authenticated web UI around the existing `profile`, `store`, `check`,
 Requires Docker Engine with Compose, and a host that allows `network_mode: host` (Linux). Use the repository root:
 
 ```sh
-printf 'RAYGATE_WEB_TOKEN=%s\n' "$(openssl rand -hex 24)" > .env
+printf 'WEB_TOKEN=%s\n' "$(openssl rand -hex 24)" > .env
 chmod 600 .env
-docker compose -f compose.raygate.yml up -d --build
+docker compose -f compose.yml up -d --build
 ```
 
-The web panel listens at `http://127.0.0.1:8088` on the host. Paste the generated `RAYGATE_WEB_TOKEN` into its login form. On a separate workstation, open an SSH tunnel:
+The web panel listens at `http://127.0.0.1:8088` on the host. Paste the generated `WEB_TOKEN` into its login form. On a separate workstation, open an SSH tunnel:
 
 ```sh
 ssh -L 8088:127.0.0.1:8088 user@your-server
@@ -20,7 +20,7 @@ ssh -L 8088:127.0.0.1:8088 user@your-server
 
 Then open `http://127.0.0.1:8088` in the browser on the workstation. The token remains only in the tab's memory (re-enter it after a reload). No external OAuth or database is needed.
 
-State persists in the `happ_state` Docker volume (`/data/state.json` and `/data/device.json`). A dedicated volume is recommended so no other running happ process modifies the same state file concurrently. Do not publish backup copies of `state.json`: subscription URLs and server links contain secrets.
+State persists in the `gateway_state` Docker volume (`/data/state.json` and `/data/device.json`). A dedicated volume is recommended so no other running happ process modifies the same state file concurrently. Do not publish backup copies of `state.json`: subscription URLs and server links contain secrets.
 
 ## Proxy access
 
@@ -30,19 +30,19 @@ To expose the proxy to trusted LAN clients (including containers with a route to
 
 ```dotenv
 # Replace with the actual IPv4 address assigned to the Linux host.
-RAYGATE_PROXY_LISTEN=192.168.1.210
-RAYGATE_PROXY_ALLOW_LAN=true
+PROXY_LISTEN=192.168.1.210
+PROXY_ALLOW_LAN=true
 # Optional source IP allowlist, using comma-separated networks.
-RAYGATE_PROXY_ALLOW_CIDRS=192.168.1.0/24,172.18.0.0/16
+PROXY_ALLOW_CIDRS=192.168.1.0/24,172.18.0.0/16
 ```
 
-Then recreate the service. The embedded core binds additional SOCKS5/HTTP listeners at the specified private IPv4 address, while retaining the loopback endpoints for health checks. **The SOCKS5/HTTP listeners have no authentication.** Restrict access at the host firewall, check Docker bridge ranges before using the example allowlist, and never forward these ports on the router. `RAYGATE_PROXY_LISTEN=0.0.0.0` is intentionally not supported.
+Then recreate the service. The embedded core binds additional SOCKS5/HTTP listeners at the specified private IPv4 address, while retaining the loopback endpoints for health checks. **The SOCKS5/HTTP listeners have no authentication.** Restrict access at the host firewall, check Docker bridge ranges before using the example allowlist, and never forward these ports on the router. `PROXY_LISTEN=0.0.0.0` is intentionally not supported.
 
 The web UI itself stays on 127.0.0.1 by default. If exposing it through a reverse proxy, use HTTPS and additional access controls. The API key travels via `Authorization: Bearer`; do not expose the UI over unencrypted public HTTP.
 
 ## API
 
-All `/api/*` endpoints require `Authorization: Bearer <RAYGATE_WEB_TOKEN>`.
+All `/api/*` endpoints require `Authorization: Bearer <WEB_TOKEN>`.
 
 | Method | Path | Payload |
 |---|---|---|

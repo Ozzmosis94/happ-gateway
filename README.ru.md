@@ -1,10 +1,10 @@
-# Raygate
+# Happ Gateway
 
 [Русский](README.ru.md) | [English](README.md)
 
-> **Неофициальный проект.** Raygate — независимо разрабатываемый шлюз для подписок, совместимых с Happ. Он **не является официальным продуктом Happ**, не связан с разработчиками или издателем Happ и не поддерживается ими. Название Happ используется только для обозначения совместимости с подписками.
+> **Неофициальный проект.** Happ Gateway — независимо разрабатываемый шлюз для подписок, совместимых с Happ. Он **не является официальным продуктом Happ**, не связан с разработчиками или издателем Happ и не поддерживается ими. Название Happ используется только для обозначения совместимости с подписками.
 
-Raygate — самостоятельно развиваемый сервис для управления прокси и подписками. Включает CLI на Go, встроенное ядро **Xray-core**, HTTP API и веб-панель с авторизацией по токену. Проект не синхронизирует автоматически код и релизы прежних форков.
+Happ Gateway — самостоятельно развиваемый сервис для управления прокси и подписками. Включает CLI на Go, встроенное ядро **Xray-core**, HTTP API и веб-панель с авторизацией по токену. Проект не синхронизирует автоматически код и релизы прежних форков.
 
 > **Происхождение кода:** проект создан на основе публичного кода happ-cli/proxray. Подробнее об авторах и правах — в [NOTICE.md](NOTICE.md). Отсутствие явно указанной лицензии у исходных проектов не означает разрешения на свободное распространение их кода и собранных бинарников.
 
@@ -25,6 +25,10 @@ Raygate — самостоятельно развиваемый сервис д�
 
 Для запуска через Docker необходимы Linux, Docker Engine и Docker Compose. Для сборки из исходников требуется **Go 1.26.4 или новее**.
 
+## Готовый Docker-образ
+
+После публикации доступен образ `ghcr.io/ozzmosis94/happ-gateway:latest`. GitHub Actions запускает тесты и сборку, затем публикует `latest` при изменениях в `main`, а также образ с тегом коммита. Релизные теги `v*` создают версионные образы. При закрытой видимости пакета потребуется авторизация в GHCR.
+
 ## Быстрый запуск в Docker
 
 Клонируйте репозиторий и перейдите в его каталог:
@@ -32,7 +36,7 @@ Raygate — самостоятельно развиваемый сервис д�
 ```bash
 git clone https://github.com/Ozzmosis94/happ-gateway.git
 cd happ-gateway
-git checkout feat/raygate-standalone
+git checkout feat/happ-gateway-standalone
 ```
 
 > Пока рефакторинг находится в черновом Pull Request, команда выше явно выбирает ветку разработки. После объединения изменений с `main` этот шаг будет не нужен.
@@ -40,7 +44,7 @@ git checkout feat/raygate-standalone
 Создайте токен веб-панели и запустите контейнер:
 
 ```bash
-printf 'RAYGATE_WEB_TOKEN=%s\n' "$(openssl rand -hex 24)" > .env
+printf 'WEB_TOKEN=%s\n' "$(openssl rand -hex 24)" > .env
 chmod 600 .env
 docker compose up -d --build
 ```
@@ -49,7 +53,7 @@ docker compose up -d --build
 
 ```bash
 docker compose ps
-docker compose logs -f raygate
+docker compose logs -f happ-gateway
 ```
 
 На Linux веб-панель по умолчанию доступна на **http://127.0.0.1:8088** самого сервера. Для открытия с другого компьютера создайте SSH-туннель:
@@ -66,7 +70,7 @@ ssh -L 8088:127.0.0.1:8088 user@server-ip
 docker compose down
 ```
 
-Именованный volume `raygate_state` при обычной остановке сохраняется. **Не используйте `docker compose down -v`**, если хотите сохранить настройки и подписки.
+Именованный volume `gateway_state` при обычной остановке сохраняется. **Не используйте `docker compose down -v`**, если хотите сохранить настройки и подписки.
 
 ## Использование CLI
 
@@ -75,29 +79,29 @@ docker compose down
 ```bash
 go test ./...
 go vet ./...
-go build -o raygate ./cmd/raygate
+go build -o happ-gateway ./cmd/happ-gateway
 ```
 
 Примеры команд:
 
 ```bash
 # Добавить подписку
-./raygate sub add https://example.com/sub/TOKEN --name home
+./happ-gateway sub add https://example.com/sub/TOKEN --name home
 
 # Просмотреть подписки
-./raygate sub list
+./happ-gateway sub list
 
 # Посмотреть серверы активной подписки
-./raygate list
+./happ-gateway list
 
 # Подключиться к серверу №1
-./raygate connect 1
+./happ-gateway connect 1
 
 # Запустить веб-сервер
-RAYGATE_WEB_TOKEN="$(openssl rand -hex 24)" ./raygate server
+WEB_TOKEN="$(openssl rand -hex 24)" ./happ-gateway server
 ```
 
-По умолчанию CLI сохраняет пользовательскую конфигурацию в каталоге `raygate` внутри системного каталога настроек. Указать другой каталог можно через `--home`.
+По умолчанию CLI сохраняет пользовательскую конфигурацию в каталоге `happ-gateway` внутри системного каталога настроек. Указать другой каталог можно через `--home`.
 
 **Миграция со старого happ-cli:** состояние автоматически не переносится. Для сохранения подписок и идентификатора устройства можно скопировать `state.json` и `device.json` из старого каталога настроек в новый. Сохраните резервную копию до миграции.
 
@@ -116,11 +120,11 @@ RAYGATE_WEB_TOKEN="$(openssl rand -hex 24)" ./raygate server
 
 ```dotenv
 # Укажите реальный частный IPv4-адрес Linux-сервера
-RAYGATE_PROXY_LISTEN=192.168.1.210
-RAYGATE_PROXY_ALLOW_LAN=true
+PROXY_LISTEN=192.168.1.210
+PROXY_ALLOW_LAN=true
 
 # Необязательный список разрешённых IPv4-подсетей
-RAYGATE_PROXY_ALLOW_CIDRS=192.168.1.0/24,172.18.0.0/16
+PROXY_ALLOW_CIDRS=192.168.1.0/24,172.18.0.0/16
 ```
 
 Пересоздайте контейнер:

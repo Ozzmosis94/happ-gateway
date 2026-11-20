@@ -1,12 +1,12 @@
-# Raygate
+# Happ Gateway
 
 [English](README.md) | [Русский](README.ru.md)
 
-> **Unofficial project.** Raygate is an independently developed, self-hosted gateway for Happ-compatible subscriptions. It is **not an official Happ product**, and is not affiliated with, endorsed by, or supported by the Happ developers or publisher. **Happ** is referenced only to describe subscription compatibility.
+> **Unofficial project.** Happ Gateway is an independently developed, self-hosted gateway for Happ-compatible subscriptions. It is **not an official Happ product**, and is not affiliated with, endorsed by, or supported by the Happ developers or publisher. **Happ** is referenced only to describe subscription compatibility.
 
-**Raygate** is a self-hosted proxy/subscription manager, featuring an independent Go CLI, embedded Xray-core, and a token-protected web dashboard. The project is developed from this repository without tracking releases or commits from intermediary forks.
+**Happ Gateway** is a self-hosted proxy/subscription manager, featuring an independent Go CLI, embedded Xray-core, and a token-protected web dashboard. The project is developed from this repository without tracking releases or commits from intermediary forks.
 
-> **Code provenance:** Raygate is based on earlier public happ-cli/proxray code. See [NOTICE.md](NOTICE.md) about provenance and distribution rights. This repository does not assert independent licensing of upstream contributions.
+> **Code provenance:** Happ Gateway is based on earlier public happ-cli/proxray code. See [NOTICE.md](NOTICE.md) about provenance and distribution rights. This repository does not assert independent licensing of upstream contributions.
 
 ## Features
 
@@ -14,7 +14,7 @@
 - CLI with SOCKS5/HTTP, TUN, and TUN-direct modes
 - Web API for subscriptions, server switching, connection status, and exit IP checks
 - Local-only administration by default; opt-in private LAN proxy listeners
-- One Go binary, `raygate`, used for both CLI and the web service
+- One Go binary, `happ-gateway`, used for both CLI and the web service
 - Docker Compose deployment on Linux
 
 ## Build and test
@@ -24,25 +24,29 @@ Requires Go 1.26.4 or later.
 ```bash
 go test ./...
 go vet ./...
-go build -o raygate ./cmd/raygate
+go build -o happ-gateway ./cmd/happ-gateway
 ```
 
 ## CLI
 
 ```bash
-raygate sub add https://example.invalid/sub/TOKEN --name home
-raygate sub list
-raygate list
-raygate connect 1
-raygate --home ./state server
+happ-gateway sub add https://example.invalid/sub/TOKEN --name home
+happ-gateway sub list
+happ-gateway list
+happ-gateway connect 1
+happ-gateway --home ./state server
 ```
 
-The default per-user data directory is named `raygate`. Existing happ-cli state is **not** automatically moved; transfer a copy of the previous `state.json` and `device.json` to the new directory if needed.
+The default per-user data directory is named `happ-gateway`. Existing happ-cli state is **not** automatically moved; transfer a copy of the previous `state.json` and `device.json` to the new directory if needed.
+
+## Docker image
+
+After publication, pull the image from GitHub Container Registry: `ghcr.io/ozzmosis94/happ-gateway:latest`. CI checks each change; successful commits to `main` publish `latest` and commit-specific tags. Tagged releases publish a version tag. The image requires access to its public GHCR package or appropriate package permissions.
 
 ## Self-hosted web dashboard
 
 ```bash
-printf 'RAYGATE_WEB_TOKEN=%s\n' "$(openssl rand -hex 24)" > .env
+printf 'WEB_TOKEN=%s\n' "$(openssl rand -hex 24)" > .env
 chmod 600 .env
 docker compose up -d --build
 ```
