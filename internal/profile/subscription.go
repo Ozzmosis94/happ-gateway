@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Ozzmosis94/raygate/internal/link"
+	"github.com/Ozzmosis94/happ-gateway/internal/link"
 )
 
 // UserInfo is the parsed subscription-userinfo header: traffic counters and the

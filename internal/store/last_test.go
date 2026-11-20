@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"github.com/Ozzmosis94/raygate/internal/link"
+	"github.com/Ozzmosis94/happ-gateway/internal/link"
 )
 
 func TestLastUsedNextServer(t *testing.T) {
