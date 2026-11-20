@@ -13,7 +13,7 @@ docker logs happ-gateway
 
 The container generates an access token on first start, saves it in `/data/web-token` and prints the token to the Docker logs at startup. Protect both the logs and the persistent volume. Supply `WEB_TOKEN` if you prefer to manage the secret yourself.
 
-Open <http://127.0.0.1:8088> on the Linux host. From another machine use `ssh -L 8088:127.0.0.1:8088 user@server-ip`. The token stays in memory of the browser tab. The volume `happ-gateway-data` holds the state and access token and survives container recreation.
+Open <http://127.0.0.1:8088> on the Linux host. From another machine use `ssh -L 8088:127.0.0.1:8088 user@server-ip`. The dashboard remembers login for 30 days via an HttpOnly, SameSite=Strict session cookie. Clicking Logout clears it. The volume `happ-gateway-data` holds the state and access token and survives container recreation.
 
 To run via Docker Compose, use `docker compose up -d` from the repository checkout; the Compose file no longer requires an `.env`.
 
@@ -53,6 +53,10 @@ All `/api/*` endpoints require `Authorization: Bearer <WEB_TOKEN>`.
 
 An update that returns zero servers does not overwrite cached servers. A drop of more than 50% returns HTTP 409 until explicitly confirmed with `force`. Deleting the currently connected subscription disconnects it. Changing the active subscription does not implicitly switch the running connection.
 
+## Startup connection restoration
+
+The gateway persists the last successfully selected proxy server (by share-link fingerprint) into its state volume and tries to reconnect after a container restart. Select a server once after upgrading to enable this for the first time. An explicit Disconnect clears that preference. Removed/replaced servers cause a restore error in the logs instead of silently connecting to a different index. This is not continuous retry or failover.
+
 ## Status semantics and limitations
 
-`running` means the embedded xray instance started, **not** that the remote server is reachable. `health.healthy` and `health.exitIp` are based on an outgoing request via the loopback SOCKS5 proxy to Cloudflare trace, checked every 30 seconds. An unreachable check endpoint can cause a false negative without stopping the proxy. This first iteration does not implement automatic reconnection/failover, subscription refresh scheduling, traffic metrics from the core, TUN mode, or authentication on the proxy ports.
+`running` means the embedded xray instance started, **not** that the remote server is reachable. `health.healthy` and `health.exitIp` are based on an outgoing request via the loopback SOCKS5 proxy to Cloudflare trace, checked every 30 seconds. An unreachable check endpoint can cause a false negative without stopping the proxy. This iteration does not implement connection retry/failover after a later outage, subscription refresh scheduling, traffic metrics from the core, TUN mode, or authentication on the proxy ports.
