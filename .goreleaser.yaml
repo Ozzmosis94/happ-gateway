@@ -4,7 +4,7 @@
 # `replace` directive (happ-cli is the main module), unlike `go install @ver`.
 version: 2
 
-project_name: happ-cli
+project_name: raygate
 
 before:
   hooks:
@@ -12,8 +12,8 @@ before:
 
 builds:
   - id: happ
-    binary: happ
-    main: ./cmd/happ
+    binary: raygate
+    main: ./cmd/raygate
     env:
       - CGO_ENABLED=0
     goos:
@@ -35,8 +35,8 @@ checksum:
 
 release:
   github:
-    owner: aimuzov
-    name: happ-cli
+    owner: Ozzmosis94
+    name: raygate
 
 changelog:
   use: github

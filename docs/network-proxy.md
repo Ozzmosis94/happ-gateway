@@ -1,6 +1,6 @@
 # Network Proxy (Linux, SOCKS5/HTTP)
 
-LAN sharing is **disabled by default**. Normal `happ connect 1` listens on
+LAN sharing is **disabled by default**. Normal `raygate connect 1` listens on
 `127.0.0.1:10808` (SOCKS5) and `127.0.0.1:10809` (HTTP).
 
 ## Enable LAN access on Debian
@@ -8,7 +8,7 @@ LAN sharing is **disabled by default**. Normal `happ connect 1` listens on
 Find the real server IP with `ip -4 addr`.
 
 ```sh
-happ connect 1 --mode proxy --allow-lan --listen 192.168.1.210
+raygate connect 1 --mode proxy --allow-lan --listen 192.168.1.210
 ```
 
 This intentionally exposes unauthenticated SOCKS5/HTTP proxy ports on the
@@ -23,7 +23,7 @@ The local `127.0.0.1` listeners remain available.
 For access limited to home LAN and Docker clients:
 
 ```sh
-happ connect 1 --mode proxy \
+raygate connect 1 --mode proxy \
   --allow-lan --listen 192.168.1.210 \
   --allow-cidr 192.168.1.0/24 \
   --allow-cidr 172.18.0.0/16
