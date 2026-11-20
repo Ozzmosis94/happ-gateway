@@ -1,5 +1,7 @@
 # Raygate
 
+> **Unofficial project.** Raygate is an independently developed, self-hosted gateway for Happ-compatible subscriptions. It is **not an official Happ product**, and is not affiliated with, endorsed by, or supported by the Happ developers or publisher. **Happ** is referenced only to describe subscription compatibility.
+
 **Raygate** is a self-hosted proxy/subscription manager, featuring an independent Go CLI, embedded Xray-core, and a token-protected web dashboard. The project is developed from this repository without tracking releases or commits from intermediary forks.
 
 > **Code provenance:** Raygate is based on earlier public happ-cli/proxray code. See [NOTICE.md](NOTICE.md) about provenance and distribution rights. This repository does not assert independent licensing of upstream contributions.
