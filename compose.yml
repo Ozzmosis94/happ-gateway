@@ -1,17 +1,9 @@
 services:
   gateway:
     image: ghcr.io/ozzmosis94/happ-gateway:latest
-    build:
-      context: .
+    container_name: happ-gateway
     restart: unless-stopped
     network_mode: host
-    environment:
-      WEB_TOKEN: "${WEB_TOKEN:?Set WEB_TOKEN in .env}"
-      DATA_DIR: /data
-      WEB_ADDR: "${WEB_ADDR:-127.0.0.1:8088}"
-      PROXY_LISTEN: "${PROXY_LISTEN:-127.0.0.1}"
-      PROXY_ALLOW_LAN: "${PROXY_ALLOW_LAN:-false}"
-      PROXY_ALLOW_CIDRS: "${PROXY_ALLOW_CIDRS:-}"
     volumes:
       - gateway_state:/data
 
