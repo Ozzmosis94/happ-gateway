@@ -1,4 +1,4 @@
-module github.com/Ozzmosis94/raygate
+module github.com/Ozzmosis94/happ-gateway
 
 go 1.26.4
 

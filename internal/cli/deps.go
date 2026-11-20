@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/Ozzmosis94/raygate/internal/device"
-	"github.com/Ozzmosis94/raygate/internal/profile"
-	"github.com/Ozzmosis94/raygate/internal/store"
+	"github.com/Ozzmosis94/happ-gateway/internal/device"
+	"github.com/Ozzmosis94/happ-gateway/internal/profile"
+	"github.com/Ozzmosis94/happ-gateway/internal/store"
 )
 
 // Store provides subscription storage. Implemented by *store.Store.

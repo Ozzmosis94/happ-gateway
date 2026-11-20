@@ -13,14 +13,14 @@ import (
 
 // Serve starts the authenticated dashboard and embedded proxy manager.
 func Serve(ctx context.Context) error {
- token:=os.Getenv("RAYGATE_WEB_TOKEN")
- if len(token)<24 { return errors.New("RAYGATE_WEB_TOKEN must contain at least 24 characters") }
- home:=os.Getenv("RAYGATE_HOME"); if home=="" {home="/data"}
- addr:=os.Getenv("RAYGATE_WEB_ADDR"); if addr=="" {addr="127.0.0.1:8088"}
- listen:=os.Getenv("RAYGATE_PROXY_LISTEN"); if listen=="" {listen="127.0.0.1"}
+ token:=os.Getenv("WEB_TOKEN")
+ if len(token)<24 { return errors.New("WEB_TOKEN must contain at least 24 characters") }
+ home:=os.Getenv("DATA_DIR"); if home=="" {home="/data"}
+ addr:=os.Getenv("WEB_ADDR"); if addr=="" {addr="127.0.0.1:8088"}
+ listen:=os.Getenv("PROXY_LISTEN"); if listen=="" {listen="127.0.0.1"}
  manager,err:=NewManager(Options{Home:home,ProxyListen:listen,
-   AllowLAN:strings.EqualFold(os.Getenv("RAYGATE_PROXY_ALLOW_LAN"),"true"),
-   AllowedCIDRs:splitCIDRs(os.Getenv("RAYGATE_PROXY_ALLOW_CIDRS"))})
+   AllowLAN:strings.EqualFold(os.Getenv("PROXY_ALLOW_LAN"),"true"),
+   AllowedCIDRs:splitCIDRs(os.Getenv("PROXY_ALLOW_CIDRS"))})
  if err!=nil {return err}
  defer manager.Close()
  go manager.Monitor(ctx)
@@ -33,9 +33,9 @@ func Serve(ctx context.Context) error {
   defer cancel()
   if err:=server.Shutdown(shutdownCtx);err!=nil{log.Printf("server shutdown: %v",err)}
  }()
- log.Printf("Raygate dashboard listening on %s",addr)
+ log.Printf("Happ Gateway dashboard listening on %s",addr)
  err=server.ListenAndServe()
- if err!=nil&&!errors.Is(err,http.ErrServerClosed){return fmt.Errorf("serve Raygate: %w",err)}
+ if err!=nil&&!errors.Is(err,http.ErrServerClosed){return fmt.Errorf("serve Happ Gateway: %w",err)}
  return nil
 }
 

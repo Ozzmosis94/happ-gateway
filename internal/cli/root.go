@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Ozzmosis94/raygate/internal/store"
+	"github.com/Ozzmosis94/happ-gateway/internal/store"
 )
 
 var homeDir string
@@ -29,8 +29,8 @@ func Execute(ctx context.Context, version string) error {
 func newRootCmd(version string, deps *Deps) *cobra.Command {
 	var interactive bool
 	root := &cobra.Command{
-		Use:   "raygate",
-		Short: "Raygate CLI and proxy manager",
+		Use:   "happ-gateway",
+		Short: "Happ Gateway CLI and proxy manager",
 		Long: "happ is a terminal VPN client compatible with HAPP subscription profiles.\n" +
 			"It fetches a subscription, parses its share links (VLESS/VMess/Trojan/Shadowsocks),\n" +
 			"and connects through an embedded xray-core, either as a local proxy or a full TUN tunnel.",

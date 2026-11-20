@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Ozzmosis94/raygate/internal/check"
-	"github.com/Ozzmosis94/raygate/internal/device"
-	"github.com/Ozzmosis94/raygate/internal/profile"
-	"github.com/Ozzmosis94/raygate/internal/store"
-	"github.com/Ozzmosis94/raygate/internal/xray"
+	"github.com/Ozzmosis94/happ-gateway/internal/check"
+	"github.com/Ozzmosis94/happ-gateway/internal/device"
+	"github.com/Ozzmosis94/happ-gateway/internal/profile"
+	"github.com/Ozzmosis94/happ-gateway/internal/store"
+	"github.com/Ozzmosis94/happ-gateway/internal/xray"
 )
 
 // Options controls how the management service exposes proxy listeners.
@@ -79,24 +79,24 @@ type Status struct {
 
 func NewManager(opts Options) (*Manager, error) {
 	if opts.Home == "" {
-		return nil, errors.New("RAYGATE_HOME is required")
+		return nil, errors.New("DATA_DIR is required")
 	}
 	if opts.ProxyListen == "" {
 		opts.ProxyListen = "127.0.0.1"
 	}
 	if !opts.AllowLAN {
 		if opts.ProxyListen != "127.0.0.1" || len(opts.AllowedCIDRs) > 0 {
-			return nil, errors.New("non-loopback proxy or CIDRs require RAYGATE_PROXY_ALLOW_LAN=true")
+			return nil, errors.New("non-loopback proxy or CIDRs require PROXY_ALLOW_LAN=true")
 		}
 	} else {
 		ip, err := netip.ParseAddr(opts.ProxyListen)
 		if err != nil || !ip.Is4() || !ip.IsPrivate() {
-			return nil, errors.New("RAYGATE_PROXY_LISTEN must be a specific private IPv4 address (not 0.0.0.0)")
+			return nil, errors.New("PROXY_LISTEN must be a specific private IPv4 address (not 0.0.0.0)")
 		}
 		for _, cidr := range opts.AllowedCIDRs {
 			p, err := netip.ParsePrefix(cidr)
 			if err != nil || !p.Addr().Is4() || !p.Addr().IsPrivate() || p.Bits() < 16 || p.Masked() != p {
-				return nil, fmt.Errorf("invalid RAYGATE_PROXY_ALLOW_CIDRS entry: %q", cidr)
+				return nil, fmt.Errorf("invalid PROXY_ALLOW_CIDRS entry: %q", cidr)
 			}
 		}
 	}

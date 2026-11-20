@@ -12,13 +12,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Ozzmosis94/raygate/internal/check"
-	"github.com/Ozzmosis94/raygate/internal/config"
-	"github.com/Ozzmosis94/raygate/internal/firewall"
-	"github.com/Ozzmosis94/raygate/internal/link"
-	"github.com/Ozzmosis94/raygate/internal/sysproxy"
-	"github.com/Ozzmosis94/raygate/internal/tunnel"
-	"github.com/Ozzmosis94/raygate/internal/xray"
+	"github.com/Ozzmosis94/happ-gateway/internal/check"
+	"github.com/Ozzmosis94/happ-gateway/internal/config"
+	"github.com/Ozzmosis94/happ-gateway/internal/firewall"
+	"github.com/Ozzmosis94/happ-gateway/internal/link"
+	"github.com/Ozzmosis94/happ-gateway/internal/sysproxy"
+	"github.com/Ozzmosis94/happ-gateway/internal/tunnel"
+	"github.com/Ozzmosis94/happ-gateway/internal/xray"
 )
 
 // connectOpts groups all connection flags into a single struct.
