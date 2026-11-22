@@ -106,8 +106,9 @@ async function loadServers() {
 async function loadStatus() {
   const status = await api('/status');
   currentStatus = status;
-  $('connectionBadge').textContent = status.running ? 'Прокси запущен' : 'Отключено';
-  $('connectionBadge').className = status.running ? 'badge running' : 'badge';
+  const verified = status.running && status.health.checkedAt && status.health.healthy;
+  $('connectionBadge').textContent = verified ? 'Соединение работает' : status.running ? 'Проверка / восстановление' : status.autoConnect ? 'Поиск сервера' : 'Отключено';
+  $('connectionBadge').className = verified ? 'badge running' : 'badge';
   $('currentServer').textContent = status.connection?.tag || 'Выключено';
   $('currentSub').textContent = status.connection ? `${status.connection.subscription} · ${status.connection.protocol.toUpperCase()}` : 'Нет активного сервера';
   $('healthValue').textContent = !status.running ? '—' : !status.health.checkedAt ? 'Ожидание проверки' : status.health.healthy ? 'Работает' : 'Ошибка проверки';
