@@ -157,6 +157,7 @@ func auth(token string, next http.Handler) http.Handler {
 func apiHandler(m *Manager) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, m.Status()) })
+ mux.HandleFunc("GET /api/events",func(w http.ResponseWriter,r *http.Request){writeJSON(w,http.StatusOK,m.Events())})
 	mux.HandleFunc("GET /api/subscriptions", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, m.Subscriptions()) })
 	mux.HandleFunc("POST /api/subscriptions", func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
