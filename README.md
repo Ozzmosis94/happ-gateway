@@ -88,7 +88,11 @@ The web API requires an authenticated administrator session. Do not forward the 
 
 The web panel currently supports proxy mode, while the CLI continues to support TUN. The feature branch includes periodic health checks, automatic server failover after three failed checks, and bounded retries. Automatic subscription refresh runs every six hours.
 
-## Fast recovery for large subscriptions
+## Automatic recovery and events
 
-If the connection fails, Happ Gateway first probes up to **4 ranked nodes** using a persisted successful-connection history. Probes run in isolated temporary Xray instances without stopping the active proxy. If the quick pass fails, the subscription is **refreshed immediately** (at most once every 5 minutes); a failed refresh preserves cached servers. Remaining candidates are checked in **bounded batches of 8 concurrent probes**, with a 5-second budget per candidate, and the fastest verified egress is selected. Scheduled six-hour refresh is independent of emergency refresh.
+Regardless of subscription size, the gateway first probes the last selected server using an isolated, temporary Xray instance. If unavailable, it attempts an emergency subscription refresh and **rechecks the same server** when its link remains in the refreshed list. If it is still offline, alternatives are probed with bounded concurrency (up to eight instances, five seconds per node), without interrupting the active proxy. The fastest confirmed healthy server is selected.
+
+Subscription-refresh failures preserve cached links and follow independent exponential backoff with jitter; recovery attempts have their own exponential backoff. Scheduled six-hour refreshes also retry on failures. The dashboard displays the current recovery phase, checked/total candidates, next attempt time, and the most recent 120 events. Events and node history persist under `/data`.
+
+Manual Disconnect disables automatic recovery until the next manual Connect.
 
