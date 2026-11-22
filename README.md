@@ -51,6 +51,8 @@ On the Linux host, open **http://127.0.0.1:8088**. On a new installation, choose
 
 When upgrading an existing installation, open the dashboard and choose an administrator username and password. No legacy access token is needed. Restrict dashboard access to trusted clients: before initial registration, the first client to reach the setup endpoint can claim the administrator account.
 
+Initial administrator registration is restricted to localhost. For setup from another LAN computer, use an SSH tunnel (`ssh -L 8088:127.0.0.1:8088 user@server-ip`) and open `http://127.0.0.1:8088`. No old access token is needed.
+
 Keep the `/data` volume, which holds subscriptions and authentication state.
 
 The SOCKS5 and HTTP proxies listen locally on ports 10808 and 10809 after you connect to a server in the dashboard. For remote administration, open an SSH tunnel: `ssh -L 8088:127.0.0.1:8088 user@server-ip`.
