@@ -16,9 +16,20 @@
     <section class="intro">
       <div><span class="eyebrow">HOME NETWORK / PROXY</span><h1>Управление подключением</h1><p>Подписки, серверы и состояние прокси в одном месте.</p></div>
     </section>
-    <section id="loginPanel" class="panel login">
-      <h2>Авторизация</h2><p class="muted">Введи токен из <code>docker logs happ-gateway</code> один раз. Вход сохраняется в браузере на 30 дней (cookie HttpOnly).</p>
-      <form id="loginForm" class="inline"><input id="tokenInput" type="password" required autocomplete="off" placeholder="Токен доступа"><button type="submit" class="primary">Войти</button></form>
+    <section id="setupPanel" class="panel login" hidden>
+      <h2>Первоначальная настройка</h2>
+      <p class="muted">Создайте администратора. Логин и пароль будут сохранены только на сервере.</p>
+      <form id="setupForm" class="formStack">
+        <label for="setupUsername">Логин</label><input id="setupUsername" required minlength="3" maxlength="64" autocomplete="username">
+        <label for="setupPassword">Пароль (от 12 символов)</label><input id="setupPassword" type="password" required minlength="12" autocomplete="new-password">
+        <label for="setupConfirm">Повторите пароль</label><input id="setupConfirm" type="password" required minlength="12" autocomplete="new-password">
+        <div id="migrationField" hidden><label for="migrationToken">Старый токен доступа (однократно, для миграции)</label><input id="migrationToken" type="password" autocomplete="off"></div>
+        <button class="primary" type="submit">Создать администратора</button>
+      </form>
+    </section>
+    <section id="loginPanel" class="panel login" hidden>
+      <h2>Авторизация</h2><p class="muted">Войдите с логином и паролем администратора.</p>
+      <form id="loginForm" class="inline"><input id="usernameInput" required autocomplete="username" placeholder="Логин"><input id="passwordInput" type="password" required autocomplete="current-password" placeholder="Пароль"><button type="submit" class="primary">Войти</button></form>
     </section>
     <section id="dashboard" hidden>
       <div class="overview">
