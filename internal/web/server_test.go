@@ -10,7 +10,7 @@ func TestPasswordSetupAndLogin(t *testing.T) {
  manager,err:=NewManager(Options{Home:t.TempDir(),ProxyListen:"127.0.0.1"})
  if err!=nil{t.Fatal(err)}
  creds,err:=newCredentialStore(t.TempDir());if err!=nil{t.Fatal(err)}
- handler:=NewHandler(manager,"",creds,"12345678901234567890123456789012",false)
+ handler:=NewHandler(manager,creds,"12345678901234567890123456789012")
  request:=func(method,path,body,cookie string)*httptest.ResponseRecorder{
   req:=httptest.NewRequest(method,path,strings.NewReader(body))
   if cookie!=""{req.Header.Set("Cookie",cookie)}
