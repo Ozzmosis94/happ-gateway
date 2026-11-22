@@ -14,8 +14,10 @@ func TestSessionCookieSurvivesHandlerRecreation(t *testing.T) {
 	token := strings.Repeat("t", 32)
 	m, err := NewManager(Options{Home: t.TempDir()})
 	if err != nil { t.Fatal(err) }
-	h1 := NewHandler(m, token)
-	body, _ := json.Marshal(map[string]string{"token": token})
+	creds,err:=newCredentialStore(t.TempDir());if err!=nil {t.Fatal(err)}
+ if err:=creds.setup("admin","correct-horse-battery");err!=nil{t.Fatal(err)}
+ h1 := NewHandler(m, "", creds, token, false)
+	body, _ := json.Marshal(map[string]string{"username": "admin","password":"correct-horse-battery"})
 	request := httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -28,7 +30,7 @@ func TestSessionCookieSurvivesHandlerRecreation(t *testing.T) {
 	if cookies[0].Value == token { t.Fatal("cookie must not contain access token") }
 
 	// A new handler on the same persisted token represents a container restart.
-	h2 := NewHandler(m, token)
+	h2 := NewHandler(m, "", creds, token, false)
 	check := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	check.AddCookie(cookies[0])
 	w := httptest.NewRecorder()
@@ -36,7 +38,7 @@ func TestSessionCookieSurvivesHandlerRecreation(t *testing.T) {
 	if w.Code != http.StatusOK { t.Fatalf("session was lost after handler recreation: %d", w.Code) }
 
 	// A different token invalidates all old cookies.
-	h3 := NewHandler(m, strings.Repeat("x", 32))
+	h3 := NewHandler(m, "", creds, strings.Repeat("x", 32), false)
 	w = httptest.NewRecorder()
 	h3.ServeHTTP(w, check)
 	if w.Code != http.StatusUnauthorized { t.Fatalf("expected 401 after token change, got %d", w.Code) }
@@ -52,8 +54,9 @@ func TestExpiredSessionAndCrossOriginRejected(t *testing.T) {
 
 	m, err := NewManager(Options{Home: t.TempDir()})
 	if err != nil { t.Fatal(err) }
-	h := NewHandler(m, token)
-	login := httptest.NewRequest(http.MethodPost, "http://gateway.local/api/login", bytes.NewBufferString(`{"token":"`+token+`"}`))
+	creds,err:=newCredentialStore(t.TempDir());if err!=nil{t.Fatal(err)}
+ h := NewHandler(m, "", creds, token, false)
+	login := httptest.NewRequest(http.MethodPost, "http://gateway.local/api/login", bytes.NewBufferString(`{"username":"admin","password":"correct-horse-battery"}`))
 	login.Header.Set("Origin", "http://evil.local")
 	out := httptest.NewRecorder()
 	h.ServeHTTP(out, login)
