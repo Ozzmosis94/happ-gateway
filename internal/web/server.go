@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
+ "net"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
@@ -25,7 +26,9 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-func NewHandler(m *Manager, token string) http.Handler {
+func NewHandler(m *Manager, token string, creds *credentialStore, sessionKey string, migrationRequired bool) http.Handler {
+ throttle:=newLoginThrottle()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -35,24 +38,32 @@ func NewHandler(m *Manager, token string) http.Handler {
 	})
 	mux.HandleFunc("GET /app.js", asset("static/app.js", "application/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /style.css", asset("static/style.css", "text/css; charset=utf-8"))
-	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
-		if !sameOrigin(r) {
-			writeError(w, http.StatusForbidden, "cross-origin requests are not allowed")
-			return
-		}
-		var input struct {
-			Token string `json:"token"`
-		}
-		if !decodeJSON(w, r, &input) {
-			return
-		}
-		if subtle.ConstantTimeCompare([]byte(input.Token), []byte(token)) != 1 {
-			writeError(w, http.StatusUnauthorized, "invalid access token")
-			return
-		}
-		setSessionCookie(w, r, token, time.Now().Add(sessionDuration))
-		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
-	})
+	mux.HandleFunc("GET /api/setup/status", func(w http.ResponseWriter,r *http.Request){
+  writeJSON(w,http.StatusOK,map[string]bool{"configured":creds.configured(),"migrationRequired":migrationRequired && !creds.configured()})
+ })
+ mux.HandleFunc("POST /api/setup",func(w http.ResponseWriter,r *http.Request){
+  if !sameOrigin(r){writeError(w,403,"cross-origin request");return}
+  var input struct{ Username string `json:"username"`; Password string `json:"password"`; MigrationToken string `json:"migrationToken"` }
+  if !decodeJSON(w,r,&input){return}
+  if creds.configured(){writeError(w,409,"administrator already configured");return}
+  if migrationRequired && subtle.ConstantTimeCompare([]byte(input.MigrationToken),[]byte(token))!=1 {writeError(w,401,"existing installation requires original access token");return}
+  if err:=creds.setup(input.Username,input.Password);err!=nil{writeError(w,400,err.Error());return}
+  setSessionCookie(w,r,sessionKey,time.Now().Add(sessionDuration))
+  writeJSON(w,201,map[string]bool{"ok":true})
+ })
+ mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
+  if !sameOrigin(r) {writeError(w,403,"cross-origin request");return}
+  if !creds.configured(){writeError(w,403,"complete first-run setup");return}
+  host,_,err:=net.SplitHostPort(r.RemoteAddr);if err!=nil{host=r.RemoteAddr}
+  if !throttle.allowed(host){writeError(w,429,"too many attempts, retry later");return}
+  var input struct{ Username string `json:"username"`; Password string `json:"password"` }
+  if !decodeJSON(w,r,&input){return}
+  ok:=creds.verify(input.Username,input.Password)
+  throttle.result(host,ok)
+  if !ok{writeError(w,401,"invalid username or password");return}
+  setSessionCookie(w,r,sessionKey,time.Now().Add(sessionDuration))
+  writeJSON(w,200,map[string]bool{"ok":true})
+ })
 	mux.HandleFunc("POST /api/logout", func(w http.ResponseWriter, r *http.Request) {
 		if !sameOrigin(r) {
 			writeError(w, http.StatusForbidden, "cross-origin requests are not allowed")
@@ -61,7 +72,7 @@ func NewHandler(m *Manager, token string) http.Handler {
 		http.SetCookie(w, &http.Cookie{Name: sessionCookie, Path: "/api/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: -1})
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
-	mux.Handle("/api/", auth(token, apiHandler(m)))
+	mux.Handle("/api/", auth(sessionKey, apiHandler(m)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
