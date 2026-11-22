@@ -49,7 +49,7 @@ docker run -d --name happ-gateway --restart unless-stopped --network host -v hap
 
 On the Linux host, open **http://127.0.0.1:8088**. On a new installation, choose an administrator username and password (12 characters minimum). Credentials are stored as an Argon2id hash in `/data/admin.json` and authenticated via a signed HttpOnly cookie.
 
-When upgrading an existing installation, first-time password setup additionally requires the **old access token** from `/data/web-token` or the existing `WEB_TOKEN` environment variable. The token is only used for this one-time migration and is no longer printed to container logs.
+When upgrading an existing installation, open the dashboard and choose an administrator username and password. No legacy access token is needed. Restrict dashboard access to trusted clients: before initial registration, the first client to reach the setup endpoint can claim the administrator account.
 
 Keep the `/data` volume, which holds subscriptions and authentication state.
 
