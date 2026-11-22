@@ -10,6 +10,7 @@ import (
  "os"
  "path/filepath"
  "sort"
+ "math/rand"
  "sync"
  "time"
 
@@ -20,10 +21,11 @@ import (
 )
 
 const (
- quickCandidateCount = 4
  concurrentProbes = 8
  probeTimeout = 5 * time.Second
  refreshCooldown = 5 * time.Minute
+ maxRecoveryBackoff = 10 * time.Minute
+ maxRefreshBackoff = 15 * time.Minute
 )
 
 type nodeHistory struct {
@@ -161,6 +163,7 @@ func (m *Manager) probeBatch(ctx context.Context,items []nodeCandidate) (probeRe
  ok:=false
  for r:=range results{
   m.recordProbe(r.candidate.hash,r.latency,r.err==nil)
+  m.mu.Lock();m.checkedCandidates++;m.mu.Unlock()
   if r.err!=nil{continue}
   if !ok || r.latency<best.latency{best=r;ok=true}
  }
@@ -184,25 +187,66 @@ func (m *Manager) commitCandidate(expectedGeneration uint64,name string,p probeR
  m.health=Health{CheckedAt:&now,Healthy:true,ExitIP:p.ip}
  m.failures=0
  m.autoRetryAt=time.Time{}
+ m.retryFailures=0
+ m.phase="connected"
+ m.appendEventLocked("connection","success",fmt.Sprintf("Подключён %s / %s, задержка %d мс",name,p.candidate.server.Tag,p.latency.Milliseconds()))
  log.Printf("Automatic failover selected %s server %d (verified %dms)",name,index,p.latency.Milliseconds())
  return nil
 }
 
-func (m *Manager) refreshAfterFailure(ctx context.Context,name string) {
- m.mu.Lock()
- if time.Since(m.lastFailureRefresh)<refreshCooldown{
-  m.mu.Unlock();return
+// retryDelay applies exponential backoff with bounded jitter. The two retry
+// streams (connection recovery and subscription refresh) have separate counters.
+func retryDelay(failures int, cap time.Duration) time.Duration {
+ if failures<1 {failures=1}
+ base:=15*time.Second
+ for n:=1;n<failures && base<cap;n++ {
+  if base>cap/2 {base=cap;break}
+  base*=2
  }
- m.lastFailureRefresh=time.Now()
- m.mu.Unlock()
- log.Printf("No quick candidate online; refreshing subscription %s",name)
- if err:=m.Update(ctx,name,false);err!=nil{
-  log.Printf("On-failure subscription refresh failed; using cached nodes: %v",err)
- }else{log.Printf("On-failure subscription refresh succeeded: %s",name)}
+ if base>cap {base=cap}
+ // 0..20% random extra delay; never exceed the configured cap.
+ room:=cap-base
+ jitter:=time.Duration(rand.Int63n(int64(base/5)+1))
+ if jitter>room {jitter=room}
+ return base+jitter
 }
 
-// Recover starts with four preferred/known-good nodes, refreshes the subscription
-// after a failed quick pass, then checks all remaining nodes in groups of eight.
+// refreshAfterFailure has its own exponential retry schedule; a failed fetch
+// never clears the existing server cache or blocks attempts against that cache.
+func (m *Manager) refreshAfterFailure(ctx context.Context,name string) bool {
+ m.mu.Lock()
+ if time.Now().Before(m.nextRefreshAt) {
+  until:=m.nextRefreshAt
+  m.mu.Unlock()
+  m.event("refresh","info",fmt.Sprintf("Подписка: повторное обновление после %s",until.Format("15:04:05")))
+  return false
+ }
+ m.mu.Unlock()
+ m.event("refresh","info",fmt.Sprintf("Обновление подписки %s после сбоя",name))
+ err:=m.Update(ctx,name,false)
+ m.mu.Lock()
+ if err!=nil {
+  m.refreshFailures++
+  delay:=retryDelay(m.refreshFailures,maxRefreshBackoff)
+  m.nextRefreshAt=time.Now().Add(delay)
+  m.mu.Unlock()
+  m.event("refresh","error",fmt.Sprintf("Подписка %s: обновление не удалось, повтор через %s; старый список сохранён",name,delay.Round(time.Second)))
+  log.Printf("On-failure subscription refresh failed for %s: %v",name,err)
+  return false
+ }
+ m.refreshFailures=0
+ m.nextRefreshAt=time.Now().Add(refreshCooldown)
+ m.mu.Unlock()
+ m.event("refresh","success",fmt.Sprintf("Подписка %s обновлена, следующее аварийное обновление не раньше чем через %s",name,refreshCooldown))
+ return true
+}
+
+// Recover state machine:
+// 1. Test last selected server without modifying production traffic.
+// 2. On failure try a subscription refresh (independent exponential retry).
+// 3. Retry that same server if its original link is still present.
+// 4. Check alternatives in bounded parallel batches, selecting verified egress.
+// 5. On exhaustion return an error; caller schedules exponential retry.
 func (m *Manager) recover(ctx context.Context) error {
  m.recoveryMu.Lock()
  defer m.recoveryMu.Unlock()
@@ -210,28 +254,81 @@ func (m *Manager) recover(ctx context.Context) error {
  if !m.store.AutoConnect(){m.mu.Unlock();return nil}
  generation:=m.generation
  name:=m.store.Active()
- if p:=m.store.LastConnection();p!=nil {name=p.Subscription}
+ preferred:=""
+ if p:=m.store.LastConnection();p!=nil {
+  name=p.Subscription
+  preferred=p.LinkHash
+ }
+ m.phase="checking"
  m.mu.Unlock()
+ m.event("recovery","info",fmt.Sprintf("Поиск рабочего сервера: подписка %s",name))
  candidates,err:=m.rankedCandidates(name)
  if err!=nil{return err}
- if len(candidates)==0{return errors.New("no supported servers in active subscription")}
- quickCount:=quickCandidateCount
- if quickCount>len(candidates){quickCount=len(candidates)}
- quick:=candidates[:quickCount]
- quickCtx,cancel:=context.WithTimeout(ctx,probeTimeout+time.Second)
- best,ok:=m.probeBatch(quickCtx,quick)
- cancel()
- if ok{return m.commitCandidate(generation,name,best)}
- m.refreshAfterFailure(ctx,name)
- candidates,err=m.rankedCandidates(name)
- if err!=nil{return err}
- attempted:=make(map[string]bool,len(quick))
- for _,c:=range quick{attempted[c.hash]=true}
+ if len(candidates)==0 {
+  m.refreshAfterFailure(ctx,name)
+  candidates,err=m.rankedCandidates(name)
+  if err!=nil{return err}
+ }
+ m.mu.Lock()
+ m.totalCandidates=len(candidates)
+ m.checkedCandidates=0
+ m.mu.Unlock()
+ attempted:=map[string]bool{}
+ // First try the exact saved node before changing any shared Xray listeners.
+ if preferred!=""{
+  for _,candidate:=range candidates {
+   if candidate.hash!=preferred{continue}
+   attempted[preferred]=true
+   m.event("probe","info",fmt.Sprintf("Проверка сохранённого сервера: %s",candidate.server.Tag))
+   result:=probeNode(ctx,candidate)
+   m.recordProbe(candidate.hash,result.latency,result.err==nil)
+   m.mu.Lock();m.checkedCandidates++;m.mu.Unlock()
+   if result.err==nil {
+    m.event("probe","success","Сохранённый сервер доступен")
+    return m.commitCandidate(generation,name,result)
+   }
+   m.event("probe","warning","Сохранённый сервер недоступен")
+   break
+  }
+ }
+ if err:=ctx.Err();err!=nil{return err}
+ m.mu.Lock();m.phase="refreshing";m.mu.Unlock()
+ refreshed:=m.refreshAfterFailure(ctx,name)
+ if refreshed {
+  candidates,err=m.rankedCandidates(name)
+  if err!=nil{return err}
+  m.mu.Lock();m.totalCandidates=len(candidates);m.mu.Unlock()
+  if preferred!=""{
+   for _,candidate:=range candidates{
+    if candidate.hash!=preferred{continue}
+    m.event("probe","info",fmt.Sprintf("Повторная проверка после обновления: %s",candidate.server.Tag))
+    result:=probeNode(ctx,candidate)
+    m.recordProbe(candidate.hash,result.latency,result.err==nil)
+    m.mu.Lock();m.checkedCandidates++;m.mu.Unlock()
+    if result.err==nil{return m.commitCandidate(generation,name,result)}
+    m.event("probe","warning","Повторная проверка сервера не прошла")
+    break
+   }
+  }
+ }
+ if err:=ctx.Err();err!=nil{return err}
+ m.mu.Lock();m.phase="scanning";m.mu.Unlock()
+ // Freshly refreshed links are eligible even if they changed since the failed
+ // probe. Avoid duplicate failures against exactly the same link.
  rest:=make([]nodeCandidate,0,len(candidates))
- for _,c:=range candidates{if !attempted[c.hash]{rest=append(rest,c)}}
- scanCtx,scanCancel:=context.WithTimeout(ctx,time.Duration((len(rest)+concurrentProbes-1)/concurrentProbes)*(probeTimeout+time.Second))
- defer scanCancel()
- best,ok=m.probeBatch(scanCtx,rest)
- if ok{return m.commitCandidate(generation,name,best)}
- return fmt.Errorf("no usable servers after checking %d candidates of subscription %q",len(quick)+len(rest),name)
+ for _,candidate:=range candidates {
+  if candidate.hash==preferred{continue}
+  if attempted[candidate.hash]{continue}
+  rest=append(rest,candidate)
+ }
+ m.mu.Lock();m.totalCandidates=len(rest)+m.checkedCandidates;m.mu.Unlock()
+ m.event("recovery","info",fmt.Sprintf("Проверка альтернатив: %d серверов, параллельно не более %d",len(rest),concurrentProbes))
+ if len(rest)==0{return errors.New("нет других серверов для проверки")}
+ // Parallel probes use their own ephemeral SOCKS ports. Wait for the bounded
+ // scan to finish, then choose the lowest observed successful latency.
+ scanCtx,cancel:=context.WithTimeout(ctx,time.Duration((len(rest)+concurrentProbes-1)/concurrentProbes)*(probeTimeout+time.Second))
+ defer cancel()
+ best,ok:=m.probeBatch(scanCtx,rest)
+ if ok {return m.commitCandidate(generation,name,best)}
+ return fmt.Errorf("no usable servers found in subscription %q",name)
 }
