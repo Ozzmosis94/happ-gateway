@@ -227,6 +227,7 @@ func (m *Manager) refreshAfterFailure(ctx context.Context,name string) bool {
  m.mu.Lock()
  if err!=nil {
   m.refreshFailures++
+  m.refreshPending=true
   delay:=retryDelay(m.refreshFailures,maxRefreshBackoff)
   m.nextRefreshAt=time.Now().Add(delay)
   m.mu.Unlock()
@@ -235,6 +236,7 @@ func (m *Manager) refreshAfterFailure(ctx context.Context,name string) bool {
   return false
  }
  m.refreshFailures=0
+ m.refreshPending=false
  m.nextRefreshAt=time.Now().Add(refreshCooldown)
  m.mu.Unlock()
  m.event("refresh","success",fmt.Sprintf("Подписка %s обновлена, следующее аварийное обновление не раньше чем через %s",name,refreshCooldown))
