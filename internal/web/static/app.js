@@ -176,10 +176,9 @@ setInterval(() => {
 $('setupForm').addEventListener('submit',(event)=>{event.preventDefault();action(async()=>{
   if ($('setupPassword').value!==$('setupConfirm').value) throw new Error('Пароли не совпадают');
   await api('/setup',{method:'POST',body:JSON.stringify({
-    username:$('setupUsername').value.trim(),password:$('setupPassword').value,
-    migrationToken:$('migrationToken').value
+    username:$('setupUsername').value.trim(),password:$('setupPassword').value
   })});
-  $('setupPassword').value='';$('setupConfirm').value='';$('migrationToken').value='';
+  $('setupPassword').value='';$('setupConfirm').value='';
   await openDashboard();
 },'Администратор создан.');});
 async function initialize() {
@@ -187,7 +186,6 @@ async function initialize() {
   if (!state.configured) {
     $('setupPanel').hidden=false;
     $('loginPanel').hidden=true;
-    $('migrationField').hidden=!state.migrationRequired;
     return;
   }
   try {await openDashboard();}
