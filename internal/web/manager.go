@@ -29,6 +29,9 @@ type Options struct {
 
 type Manager struct {
 	mu         sync.Mutex
+	recoveryMu sync.Mutex
+	history map[string]nodeHistory
+	lastFailureRefresh time.Time
 	opts       Options
 	store      *store.Store
 	instance   *xray.Instance
@@ -109,7 +112,9 @@ func NewManager(opts Options) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{opts: opts, store: st}, nil
+	m := &Manager{opts: opts, store: st}
+	m.loadHistory()
+	return m, nil
 }
 
 func (m *Manager) Subscriptions() []Subscription {
@@ -242,6 +247,10 @@ func (m *Manager) Remove(name string) error {
 func (m *Manager) Connect(name string, index int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.connectLocked(name,index)
+}
+
+func (m *Manager) connectLocked(name string,index int) error {
 	if name == "" {
 		name = m.store.Active()
 	}
@@ -387,45 +396,6 @@ func (m *Manager) monitorStep(ctx context.Context) {
   log.Printf("Automatic connection recovery failed: %v",err)
   m.mu.Lock();m.autoRetryAt=time.Now().Add(30*time.Second);m.mu.Unlock()
  }
-}
-
-// recover tries the previously selected node first, followed by supported
-// alternatives. A working SOCKS egress response is required for success.
-func (m *Manager) recover(ctx context.Context) error {
- m.mu.Lock()
- name:=m.store.Active()
- last:=m.store.LastConnection()
- if last!=nil { name=last.Subscription }
- sub,ok:=m.store.Find(name)
- if !ok {m.mu.Unlock();return errors.New("no active subscription")}
- servers:=sub.Servers()
- currentHash:=""
- if m.current!=nil && m.current.Subscription==name && m.current.Index>0 && m.current.Index<=len(servers) {
-  currentHash=store.HashLink(servers[m.current.Index-1].Raw)
- }
- m.mu.Unlock()
- order:=make([]int,0,len(servers))
- // Avoid repeatedly selecting a known failing node until all others have been tried.
- for i,s:=range servers {
-  if !xray.Supported(s.Protocol) {continue}
-  hash:=store.HashLink(s.Raw)
-  if hash==currentHash {continue}
-  if last!=nil && hash==last.LinkHash {order=append([]int{i+1},order...)} else {order=append(order,i+1)}
- }
- if len(order)==0 && currentHash!="" {for i,s:=range servers {if xray.Supported(s.Protocol){order=append(order,i+1)}}}
- for _,index:=range order {
-  if ctx.Err()!=nil{return ctx.Err()}
-  if err:=m.Connect(name,index);err!=nil {log.Printf("Auto candidate %d start error: %v",index,err);continue}
-  ip,err:=check.ExternalIP("127.0.0.1:10808",8*time.Second)
-  if err==nil {
-   m.mu.Lock();now:=time.Now();m.health=Health{CheckedAt:&now,Healthy:true,ExitIP:ip};m.failures=0;m.mu.Unlock()
-   log.Printf("Automatic connection healthy: subscription=%s server=%d",name,index)
-   return nil
-  }
-  log.Printf("Auto candidate %d failed health check: %v",index,err)
-  m.mu.Lock();_ =m.stopLocked();m.mu.Unlock()
- }
- return fmt.Errorf("no working servers in subscription %q (%d candidates)",name,len(order))
 }
 
 func (m *Manager) checkOnce() {
