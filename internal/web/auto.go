@@ -67,11 +67,13 @@ func (m *Manager) recordProbe(hash string,latency time.Duration, success bool) {
  m.history[hash]=v
  data,err:=json.MarshalIndent(m.history,"","  ")
  path:=m.historyPath()
+ if err==nil {
+  // Serialize snapshots with the manager lock to avoid stale overwrites.
+  if err=os.MkdirAll(m.opts.Home,0700);err==nil {
+   if err=os.WriteFile(path+".tmp",data,0600);err==nil {_=os.Rename(path+".tmp",path)}
+  }
+ }
  m.mu.Unlock()
- if err!=nil {return}
- if err:=os.MkdirAll(m.opts.Home,0700);err!=nil {return}
- // A failed history write must never interrupt the proxy.
- if err:=os.WriteFile(path+".tmp",data,0600);err==nil {_=os.Rename(path+".tmp",path)}
 }
 
 func (m *Manager) rankedCandidates(name string) ([]nodeCandidate,error) {
