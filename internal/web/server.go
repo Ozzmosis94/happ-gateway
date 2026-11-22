@@ -144,11 +144,6 @@ func auth(token string, next http.Handler) http.Handler {
 			writeError(w, http.StatusForbidden, "cross-origin requests are not allowed")
 			return
 		}
-		provided, hasBearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if hasBearer && subtle.ConstantTimeCompare([]byte(provided), []byte(token)) == 1 {
-			next.ServeHTTP(w, r)
-			return
-		}
 		if cookie, err := r.Cookie(sessionCookie); err == nil && validSession(cookie.Value, token, time.Now()) {
 			next.ServeHTTP(w, r)
 			return
