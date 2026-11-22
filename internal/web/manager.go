@@ -73,6 +73,8 @@ type Health struct {
 }
 
 type Status struct {
+	AutoConnect bool `json:"autoConnect"`
+	Failures int `json:"failures"`
 	Running    bool        `json:"running"`
 	Connection *Connection `json:"connection,omitempty"`
 	Health     Health      `json:"health"`
@@ -344,7 +346,7 @@ func (m *Manager) Restore() error {
 func (m *Manager) Status() Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	result := Status{Running: m.instance != nil, Health: m.health, ProxySOCKS: m.opts.ProxyListen + ":10808", ProxyHTTP: m.opts.ProxyListen + ":10809"}
+	result := Status{AutoConnect: m.store.AutoConnect(), Failures: m.failures, Running: m.instance != nil, Health: m.health, ProxySOCKS: m.opts.ProxyListen + ":10808", ProxyHTTP: m.opts.ProxyListen + ":10809"}
 	if m.current != nil {
 		cpy := *m.current
 		result.Connection = &cpy
@@ -357,11 +359,14 @@ func (m *Manager) Status() Status {
 func (m *Manager) Monitor(ctx context.Context) {
  ticker := time.NewTicker(30 * time.Second)
  defer ticker.Stop()
+ refreshTicker:=time.NewTicker(6 * time.Hour)
+ defer refreshTicker.Stop()
  m.monitorStep(ctx)
  for {
   select {
   case <-ctx.Done(): return
   case <-ticker.C: m.monitorStep(ctx)
+  case <-refreshTicker.C: m.refreshSubscriptions(ctx)
   }
  }
 }
@@ -439,5 +444,18 @@ func (m *Manager) checkOnce() {
  if err==nil {m.health.ExitIP=ip} else {
   m.health.Error=err.Error()
   if previous {log.Printf("Gateway health degraded: %v",err)}
+ }
+}
+
+func (m *Manager) refreshSubscriptions(ctx context.Context) {
+ m.mu.Lock()
+ names:=make([]string,0)
+ for _,sub:=range m.store.Subscriptions() {names=append(names,sub.Name)}
+ m.mu.Unlock()
+ for _,name:=range names {
+  if ctx.Err()!=nil {return}
+  if err:=m.Update(ctx,name,false);err!=nil {
+   log.Printf("Automatic subscription refresh failed for %s: %v",name,err)
+  } else {log.Printf("Subscription %s refreshed",name)}
  }
 }
