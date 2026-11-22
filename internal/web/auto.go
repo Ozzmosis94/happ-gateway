@@ -164,7 +164,11 @@ func (m *Manager) probeBatch(ctx context.Context,items []nodeCandidate) (probeRe
  for r:=range results{
   m.recordProbe(r.candidate.hash,r.latency,r.err==nil)
   m.mu.Lock();m.checkedCandidates++;m.mu.Unlock()
-  if r.err!=nil{continue}
+  if r.err!=nil{
+   m.event("probe","warning",fmt.Sprintf("Сервер #%d не прошёл проверку",r.candidate.index))
+   continue
+  }
+  m.event("probe","success",fmt.Sprintf("Сервер #%d доступен, задержка %d мс",r.candidate.index,r.latency.Milliseconds()))
   if !ok || r.latency<best.latency{best=r;ok=true}
  }
  return best,ok
