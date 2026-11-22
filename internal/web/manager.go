@@ -37,6 +37,7 @@ type Manager struct {
  totalCandidates int
  retryFailures int
  refreshFailures int
+ refreshPending bool
  nextRefreshAt time.Time
 	opts       Options
 	store      *store.Store
@@ -410,7 +411,10 @@ func (m *Manager) monitorStep(ctx context.Context) {
  if running && checked && !healthy {m.failures++} else if healthy {m.failures=0}
  failures:=m.failures
  retryAt:=m.autoRetryAt
+ needsRefresh:=m.refreshPending && !time.Now().Before(m.nextRefreshAt)
+ refreshName:=m.store.Active()
  m.mu.Unlock()
+ if needsRefresh && refreshName!=""{m.refreshAfterFailure(ctx,refreshName)}
  if !enabled || (running && (healthy || failures<3)) || time.Now().Before(retryAt){return}
  if err:=m.recover(ctx);err!=nil{
   m.mu.Lock()
@@ -460,12 +464,28 @@ func (m *Manager) checkOnce() {
 func (m *Manager) refreshSubscriptions(ctx context.Context) {
  m.mu.Lock()
  names:=make([]string,0)
- for _,sub:=range m.store.Subscriptions() {names=append(names,sub.Name)}
+ for _,sub:=range m.store.Subscriptions(){names=append(names,sub.Name)}
  m.mu.Unlock()
- for _,name:=range names {
-  if ctx.Err()!=nil {return}
-  if err:=m.Update(ctx,name,false);err!=nil {
-   log.Printf("Automatic subscription refresh failed for %s: %v",name,err)
-  } else {log.Printf("Subscription %s refreshed",name)}
+ for _,name:=range names{
+  if ctx.Err()!=nil{return}
+  m.event("refresh","info",fmt.Sprintf("Плановое обновление подписки %s",name))
+  err:=m.Update(ctx,name,false)
+  if err!=nil{
+   m.mu.Lock()
+   if name==m.store.Active(){
+    m.refreshFailures++
+    delay:=retryDelay(m.refreshFailures,maxRefreshBackoff)
+    m.nextRefreshAt=time.Now().Add(delay)
+    m.refreshPending=true
+    m.appendEventLocked("refresh","warning",fmt.Sprintf("Плановое обновление %s не удалось; повтор через %s",name,delay.Round(time.Second)))
+   }
+   m.mu.Unlock()
+   log.Printf("Scheduled subscription refresh failed for %s: %v",name,err)
+  }else{
+   m.mu.Lock()
+   if name==m.store.Active(){m.refreshFailures=0;m.refreshPending=false;m.nextRefreshAt=time.Now().Add(refreshCooldown)}
+   m.mu.Unlock()
+   m.event("refresh","success",fmt.Sprintf("Подписка %s обновлена",name))
+  }
  }
 }
