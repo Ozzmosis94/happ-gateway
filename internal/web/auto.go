@@ -227,7 +227,9 @@ func (m *Manager) refreshAfterFailure(ctx context.Context,name string) bool {
  }
  m.mu.Unlock()
  m.event("refresh","info",fmt.Sprintf("Обновление подписки %s после сбоя",name))
- err:=m.Update(ctx,name,false)
+ // Emergency refresh accepts a valid smaller subscription when the provider
+ // legitimately rotates its fleet; empty/invalid responses are still rejected.
+ err:=m.Update(ctx,name,true)
  m.mu.Lock()
  if err!=nil {
   m.refreshFailures++
