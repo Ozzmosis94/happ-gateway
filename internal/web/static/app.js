@@ -115,11 +115,29 @@ async function loadStatus() {
   $('lastCheck').textContent = status.health.checkedAt ? `Проверено ${new Date(status.health.checkedAt).toLocaleTimeString('ru-RU')}${status.health.error ? ' · ' + status.health.error : ''}` : 'Нет измерений';
   $('exitIP').textContent = status.health.exitIp || '—';
   $('proxyAddress').textContent = 'SOCKS5 ' + status.proxySocks;
+  const phases={connected:'Работает',checking:'Проверка',refreshing:'Обновление',scanning:'Выбор узла',retrying:'Ожидание повтора',degraded:'Сбой',disabled:'Отключено',connecting:'Подключение'};
+  $('recoveryPhase').textContent=phases[status.phase]|| (status.autoConnect?'Автоматический':'Отключён');
+  $('recoveryProgress').textContent=`${status.checked||0} из ${status.total||0}`;
+  $('recoveryRetry').textContent=status.retryAt?new Date(status.retryAt).toLocaleTimeString('ru-RU'):'—';
+}
+
+async function loadEvents(){
+  const events=await api('/events');
+  const root=$('gatewayEvents');root.replaceChildren();
+  if(!events?.length){root.textContent='Событий пока нет';return;}
+  for(const event of events.slice(0,40)){
+    const item=document.createElement('div');item.className='serverRow';
+    const detail=document.createElement('div');
+    detail.append(textNode('div','serverTitle',`${new Date(event.time).toLocaleString('ru-RU')} · ${event.kind} · ${event.level}`));
+    detail.append(textNode('div','serverSubtitle',event.message));
+    item.append(detail);root.append(item);
+  }
 }
 
 async function openDashboard() {
   await loadStatus();
   await loadSubscriptions();
+  await loadEvents();
   $('loginPanel').hidden = true;
   $('setupPanel').hidden = true;
   $('dashboard').hidden = false;
@@ -160,10 +178,11 @@ $('deleteBtn').addEventListener('click',() => {if(!selected || !confirm(`Уда�
   await api('/subscriptions/'+encodeURIComponent(selected),{method:'DELETE'});
   selected='';await loadStatus();await loadSubscriptions();
 },'Подписка удалена.');});
+$('eventsRefreshBtn').addEventListener('click',()=>action(loadEvents,'История обновлена.'));
 $('disconnectBtn').addEventListener('click',() => action(async () => {await api('/disconnect',{method:'POST'});await loadStatus();await loadServers();},'Прокси остановлен.'));
 setInterval(() => {
   if ($('dashboard').hidden) return;
-  loadStatus().catch((error) => {
+  Promise.all([loadStatus(),loadEvents()]).catch((error) => {
     if (error.status === 401) {
       $('dashboard').hidden = true;
       $('loginPanel').hidden = false;
