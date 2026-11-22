@@ -3,7 +3,6 @@ package web
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/subtle"
  "net"
 	"embed"
 	"encoding/hex"
@@ -43,7 +42,11 @@ func NewHandler(m *Manager, creds *credentialStore, sessionKey string) http.Hand
  })
  mux.HandleFunc("POST /api/setup",func(w http.ResponseWriter,r *http.Request){
   if !sameOrigin(r){writeError(w,403,"cross-origin request");return}
-  var input struct{ Username string `json:"username"`; Password string `json:"password"`;  }
+  host,_,err:=net.SplitHostPort(r.RemoteAddr)
+  if err!=nil || net.ParseIP(host)==nil || !net.ParseIP(host).IsLoopback() {
+   writeError(w,403,"first-run setup requires access from localhost (use SSH port forwarding)");return
+  }
+  var input struct{ Username string `json:"username"`; Password string `json:"password"` }
   if !decodeJSON(w,r,&input){return}
   if creds.configured(){writeError(w,409,"administrator already configured");return}
   if err:=creds.setup(input.Username,input.Password);err!=nil{writeError(w,400,err.Error());return}
