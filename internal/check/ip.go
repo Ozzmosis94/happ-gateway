@@ -16,14 +16,18 @@ import (
 // ExternalIP connects through a local SOCKS5 proxy to Cloudflare's trace
 // endpoint and returns the visible external IP address.
 func ExternalIP(socksAddr string, timeout time.Duration) (string, error) {
+ deadline:=time.Now().Add(timeout)
  endpoints:=[]string{"https://cloudflare.com/cdn-cgi/trace","https://api.ipify.org"}
  var last error
  for _,endpoint:=range endpoints {
-  value,err:=fetchViaSOCKS(socksAddr,endpoint,timeout)
-  if err==nil && net.ParseIP(strings.TrimSpace(value))!=nil {return strings.TrimSpace(value),nil}
-  if err!=nil {last=err}else{last=fmt.Errorf("%s returned invalid external IP",endpoint)}
+  remaining:=time.Until(deadline)
+  if remaining<=0{break}
+  value,err:=fetchViaSOCKS(socksAddr,endpoint,remaining)
+  if err==nil && net.ParseIP(strings.TrimSpace(value))!=nil{return strings.TrimSpace(value),nil}
+  if err!=nil{last=err}else{last=fmt.Errorf("%s returned invalid external IP",endpoint)}
  }
- return "",fmt.Errorf("all proxy egress checks failed: %w",last)
+ if last==nil{last=context.DeadlineExceeded}
+ return "",fmt.Errorf("proxy egress check failed: %w",last)
 }
 
 // FetchURL fetches a URL through the SOCKS5 proxy and returns the response
