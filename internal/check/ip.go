@@ -22,7 +22,9 @@ func ExternalIP(socksAddr string, timeout time.Duration) (string, error) {
  for _,endpoint:=range endpoints {
   remaining:=time.Until(deadline)
   if remaining<=0{break}
-  value,err:=fetchViaSOCKS(socksAddr,endpoint,remaining)
+  attempt:=remaining
+  if endpoint==endpoints[0] && remaining>2*time.Second{attempt=remaining/2}
+  value,err:=fetchViaSOCKS(socksAddr,endpoint,attempt)
   if err==nil && net.ParseIP(strings.TrimSpace(value))!=nil{return strings.TrimSpace(value),nil}
   if err!=nil{last=err}else{last=fmt.Errorf("%s returned invalid external IP",endpoint)}
  }
