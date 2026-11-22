@@ -54,6 +54,7 @@ type state struct {
 	Active        string                `json:"active,omitempty"`
 	Subscriptions []SubEntry            `json:"subscriptions,omitempty"`
 	Connection    *ConnectionPreference `json:"connection,omitempty"`
+	AutoConnect *bool `json:"autoConnect,omitempty"`
 }
 
 // Store is an on-disk collection of subscriptions.
@@ -198,4 +199,18 @@ func (s *Store) SetLastConnection(c *ConnectionPreference) error {
 		return err
 	}
 	return nil
+}
+
+// AutoConnect defaults to enabled for a configured subscription, unless
+// explicitly disabled by the user.
+func (s *Store) AutoConnect() bool {
+ if s.state.AutoConnect != nil {return *s.state.AutoConnect}
+ return len(s.state.Subscriptions)>0
+}
+func (s *Store) SetAutoConnect(enabled bool) error {
+ old:=s.state.AutoConnect
+ v:=enabled
+ s.state.AutoConnect=&v
+ if err:=s.save();err!=nil{s.state.AutoConnect=old;return err}
+ return nil
 }
