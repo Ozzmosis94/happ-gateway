@@ -195,7 +195,7 @@ setInterval(() => {
 $('setupForm').addEventListener('submit',(event)=>{event.preventDefault();action(async()=>{
   if ($('setupPassword').value!==$('setupConfirm').value) throw new Error('Пароли не совпадают');
   await api('/setup',{method:'POST',body:JSON.stringify({
-    username:$('setupUsername').value.trim(),password:$('setupPassword').value
+    username:$('setupUsername').value.trim(),password:$('setupPassword').value,confirmPassword:$('setupConfirm').value
   })});
   $('setupPassword').value='';$('setupConfirm').value='';
   await openDashboard();

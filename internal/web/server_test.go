@@ -18,10 +18,12 @@ func TestPasswordSetupAndLogin(t *testing.T) {
   out:=httptest.NewRecorder();handler.ServeHTTP(out,req);return out
  }
  if got:=request("GET","/api/subscriptions","","");got.Code!=401{t.Fatalf("unauth status %d",got.Code)}
- setup:=request("POST","/api/setup",`{"username":"admin","password":"correct-horse-battery"}`,"")
+ mismatch:=request("POST","/api/setup",`{"username":"admin","password":"one","confirmPassword":"two"}`,"")
+ if mismatch.Code!=400{t.Fatalf("mismatching passwords accepted: %d",mismatch.Code)}
+ setup:=request("POST","/api/setup",`{"username":"admin","password":"correct-horse-battery","confirmPassword":"correct-horse-battery"}`,"")
  if setup.Code!=201{t.Fatalf("setup status=%d body=%s",setup.Code,setup.Body.String())}
- if got:=request("POST","/api/setup",`{"username":"second","password":"correct-horse-battery"}`,"");got.Code!=409{t.Fatalf("second setup=%d",got.Code)}
- remote:=httptest.NewRequest("POST","/api/setup",strings.NewReader(`{"username":"remote","password":"correct-horse-battery"}`))
+ if got:=request("POST","/api/setup",`{"username":"second","password":"correct-horse-battery","confirmPassword":"correct-horse-battery"}`,"");got.Code!=409{t.Fatalf("second setup=%d",got.Code)}
+ remote:=httptest.NewRequest("POST","/api/setup",strings.NewReader(`{"username":"remote","password":"correct-horse-battery","confirmPassword":"correct-horse-battery"}`))
  remote.RemoteAddr="192.168.1.242:52000"
  rejected:=httptest.NewRecorder();handler.ServeHTTP(rejected,remote)
  if rejected.Code!=403{t.Fatalf("remote setup status=%d",rejected.Code)}

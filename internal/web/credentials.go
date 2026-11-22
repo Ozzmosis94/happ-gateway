@@ -52,7 +52,6 @@ func (c *credentialStore) verify(username,password string) bool {
 func (c *credentialStore) setup(username,password string) error {
  username=strings.TrimSpace(username)
  if len(username)<3||len(username)>64||strings.ContainsAny(username,"\r\n\x00"){return errors.New("username must be 3–64 characters")}
- if len(password)<12||len(password)>1024{return errors.New("password must contain at least 12 characters")}
  salt:=make([]byte,16)
  if _,err:=rand.Read(salt);err!=nil{return err}
  hash:=argon2.IDKey([]byte(password),salt,3,64*1024,4,32)

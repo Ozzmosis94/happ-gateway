@@ -21,14 +21,14 @@
       <p class="muted">Создайте администратора. Логин и пароль будут сохранены только на сервере.</p>
       <form id="setupForm" class="formStack">
         <label for="setupUsername">Логин</label><input id="setupUsername" required minlength="3" maxlength="64" autocomplete="username">
-        <label for="setupPassword">Пароль (от 12 символов)</label><input id="setupPassword" type="password" required minlength="12" autocomplete="new-password">
-        <label for="setupConfirm">Повторите пароль</label><input id="setupConfirm" type="password" required minlength="12" autocomplete="new-password">
+        <label for="setupPassword">Пароль</label><input id="setupPassword" type="password" autocomplete="new-password">
+        <label for="setupConfirm">Повторите пароль</label><input id="setupConfirm" type="password" autocomplete="new-password">
         <button class="primary" type="submit">Создать администратора</button>
       </form>
     </section>
     <section id="loginPanel" class="panel login" hidden>
       <h2>Авторизация</h2><p class="muted">Войдите с логином и паролем администратора.</p>
-      <form id="loginForm" class="inline"><input id="usernameInput" required autocomplete="username" placeholder="Логин"><input id="passwordInput" type="password" required autocomplete="current-password" placeholder="Пароль"><button type="submit" class="primary">Войти</button></form>
+      <form id="loginForm" class="inline"><input id="usernameInput" required autocomplete="username" placeholder="Логин"><input id="passwordInput" type="password" autocomplete="current-password" placeholder="Пароль"><button type="submit" class="primary">Войти</button></form>
     </section>
     <section id="dashboard" hidden>
       <div class="overview">
