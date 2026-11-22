@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/netip"
 	"net/url"
 	"strings"
@@ -34,6 +35,8 @@ type Manager struct {
 	current    *Connection
 	generation uint64
 	health     Health
+	failures   int
+	autoRetryAt time.Time
 }
 
 type Subscription struct {
@@ -183,7 +186,8 @@ func (m *Manager) Add(ctx context.Context, name, rawURL string) error {
 	if _, exists := m.store.Find(name); exists {
 		return fmt.Errorf("subscription %q already exists", name)
 	}
-	return m.store.Upsert(entry)
+	if err := m.store.Upsert(entry); err != nil { return err }
+	return m.store.SetAutoConnect(true)
 }
 
 func (m *Manager) Update(ctx context.Context, name string, force bool) error {
@@ -274,7 +278,9 @@ func (m *Manager) Connect(name string, index int) error {
 	m.instance = inst
 	m.current = &Connection{Subscription: name, Index: index, Tag: s.Tag, Protocol: s.Protocol, StartedAt: time.Now()}
 	m.health = Health{}
+	m.failures = 0
 	m.generation++
+	_ = m.store.SetAutoConnect(true)
 	go m.checkOnce() // Check immediately after connecting; stale results are generation-guarded.
 	return nil
 }
@@ -295,6 +301,7 @@ func (m *Manager) stopLocked() error {
 func (m *Manager) Disconnect() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.store.SetAutoConnect(false); err != nil { return fmt.Errorf("persist automatic disconnect: %w", err) }
 	if err := m.store.SetLastConnection(nil); err != nil {
 		return fmt.Errorf("persist disconnect: %w", err)
 	}
@@ -345,37 +352,92 @@ func (m *Manager) Status() Status {
 	return result
 }
 
+// Monitor checks actual proxied egress, and recovers automatically after outages.
+// No busy-loop: the background loop retries with a bounded interval.
 func (m *Manager) Monitor(ctx context.Context) {
-	timer := time.NewTicker(30 * time.Second)
-	defer timer.Stop()
-	for {
-		m.checkOnce()
-		select {
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-		}
-	}
+ ticker := time.NewTicker(30 * time.Second)
+ defer ticker.Stop()
+ m.monitorStep(ctx)
+ for {
+  select {
+  case <-ctx.Done(): return
+  case <-ticker.C: m.monitorStep(ctx)
+  }
+ }
 }
+
+func (m *Manager) monitorStep(ctx context.Context) {
+ m.checkOnce()
+ m.mu.Lock()
+ enabled := m.store.AutoConnect()
+ running := m.instance != nil
+ healthy := m.health.Healthy
+ checked := m.health.CheckedAt != nil
+ if running && checked && !healthy { m.failures++ } else if healthy { m.failures=0 }
+ failures := m.failures
+ retryAt := m.autoRetryAt
+ m.mu.Unlock()
+ if !enabled || (running && failures < 3) || time.Now().Before(retryAt) { return }
+ if err:=m.recover(ctx); err!=nil {
+  log.Printf("Automatic connection recovery failed: %v",err)
+  m.mu.Lock();m.autoRetryAt=time.Now().Add(30*time.Second);m.mu.Unlock()
+ }
+}
+
+// recover tries the previously selected node first, followed by supported
+// alternatives. A working SOCKS egress response is required for success.
+func (m *Manager) recover(ctx context.Context) error {
+ m.mu.Lock()
+ name:=m.store.Active()
+ last:=m.store.LastConnection()
+ if last!=nil { name=last.Subscription }
+ sub,ok:=m.store.Find(name)
+ if !ok {m.mu.Unlock();return errors.New("no active subscription")}
+ servers:=sub.Servers()
+ currentHash:=""
+ if m.current!=nil && m.current.Subscription==name && m.current.Index>0 && m.current.Index<=len(servers) {
+  currentHash=store.HashLink(servers[m.current.Index-1].Raw)
+ }
+ m.mu.Unlock()
+ order:=make([]int,0,len(servers))
+ // Avoid repeatedly selecting a known failing node until all others have been tried.
+ for i,s:=range servers {
+  if !xray.Supported(s.Protocol) {continue}
+  hash:=store.HashLink(s.Raw)
+  if hash==currentHash {continue}
+  if last!=nil && hash==last.LinkHash {order=append([]int{i+1},order...)} else {order=append(order,i+1)}
+ }
+ if len(order)==0 && currentHash!="" {for i,s:=range servers {if xray.Supported(s.Protocol){order=append(order,i+1)}}}
+ for _,index:=range order {
+  if ctx.Err()!=nil{return ctx.Err()}
+  if err:=m.Connect(name,index);err!=nil {log.Printf("Auto candidate %d start error: %v",index,err);continue}
+  ip,err:=check.ExternalIP("127.0.0.1:10808",8*time.Second)
+  if err==nil {
+   m.mu.Lock();now:=time.Now();m.health=Health{CheckedAt:&now,Healthy:true,ExitIP:ip};m.failures=0;m.mu.Unlock()
+   log.Printf("Automatic connection healthy: subscription=%s server=%d",name,index)
+   return nil
+  }
+  log.Printf("Auto candidate %d failed health check: %v",index,err)
+  m.mu.Lock();_ =m.stopLocked();m.mu.Unlock()
+ }
+ return fmt.Errorf("no working servers in subscription %q (%d candidates)",name,len(order))
+}
+
 func (m *Manager) checkOnce() {
-	m.mu.Lock()
-	active := m.instance != nil
-	generation := m.generation
-	m.mu.Unlock()
-	if !active {
-		return
-	}
-	ip, err := check.ExternalIP("127.0.0.1:10808", 8*time.Second)
-	now := time.Now()
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.instance == nil || generation != m.generation {
-		return
-	}
-	m.health = Health{CheckedAt: &now, Healthy: err == nil}
-	if err == nil {
-		m.health.ExitIP = ip
-	} else {
-		m.health.Error = err.Error()
-	}
+ m.mu.Lock()
+ active := m.instance != nil
+ generation := m.generation
+ m.mu.Unlock()
+ if !active {return}
+ ip,err:=check.ExternalIP("127.0.0.1:10808",8*time.Second)
+ now:=time.Now()
+ m.mu.Lock()
+ defer m.mu.Unlock()
+ if m.instance==nil || generation!=m.generation{return}
+ previous:=m.health.Healthy
+ m.health=Health{CheckedAt:&now,Healthy:err==nil}
+ if err==nil {m.health.ExitIP=ip} else {
+  m.health.Error=err.Error()
+  if previous {log.Printf("Gateway health degraded: %v",err)}
+ }
 }
