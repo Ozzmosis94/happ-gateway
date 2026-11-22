@@ -18,6 +18,8 @@ func TestPasswordSetupAndLogin(t *testing.T) {
   out:=httptest.NewRecorder();handler.ServeHTTP(out,req);return out
  }
  if got:=request("GET","/api/subscriptions","","");got.Code!=401{t.Fatalf("unauth status %d",got.Code)}
+ mismatch:=request("POST","/api/setup",`{"username":"admin","password":"one","confirmPassword":"two"}`,"")
+ if mismatch.Code!=400{t.Fatalf("mismatching passwords accepted: %d",mismatch.Code)}
  setup:=request("POST","/api/setup",`{"username":"admin","password":"correct-horse-battery","confirmPassword":"correct-horse-battery"}`,"")
  if setup.Code!=201{t.Fatalf("setup status=%d body=%s",setup.Code,setup.Body.String())}
  if got:=request("POST","/api/setup",`{"username":"second","password":"correct-horse-battery","confirmPassword":"correct-horse-battery"}`,"");got.Code!=409{t.Fatalf("second setup=%d",got.Code)}
