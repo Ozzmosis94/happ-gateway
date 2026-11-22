@@ -16,9 +16,19 @@
     <section class="intro">
       <div><span class="eyebrow">HOME NETWORK / PROXY</span><h1>Управление подключением</h1><p>Подписки, серверы и состояние прокси в одном месте.</p></div>
     </section>
-    <section id="loginPanel" class="panel login">
-      <h2>Авторизация</h2><p class="muted">Введи токен из <code>docker logs happ-gateway</code> один раз. Вход сохраняется в браузере на 30 дней (cookie HttpOnly).</p>
-      <form id="loginForm" class="inline"><input id="tokenInput" type="password" required autocomplete="off" placeholder="Токен доступа"><button type="submit" class="primary">Войти</button></form>
+    <section id="setupPanel" class="panel login" hidden>
+      <h2>Первоначальная настройка</h2>
+      <p class="muted">Создайте администратора. Логин и пароль будут сохранены только на сервере.</p>
+      <form id="setupForm" class="formStack">
+        <label for="setupUsername">Логин</label><input id="setupUsername" required minlength="3" maxlength="64" autocomplete="username">
+        <label for="setupPassword">Пароль (от 12 символов)</label><input id="setupPassword" type="password" required minlength="12" autocomplete="new-password">
+        <label for="setupConfirm">Повторите пароль</label><input id="setupConfirm" type="password" required minlength="12" autocomplete="new-password">
+        <button class="primary" type="submit">Создать администратора</button>
+      </form>
+    </section>
+    <section id="loginPanel" class="panel login" hidden>
+      <h2>Авторизация</h2><p class="muted">Войдите с логином и паролем администратора.</p>
+      <form id="loginForm" class="inline"><input id="usernameInput" required autocomplete="username" placeholder="Логин"><input id="passwordInput" type="password" required autocomplete="current-password" placeholder="Пароль"><button type="submit" class="primary">Войти</button></form>
     </section>
     <section id="dashboard" hidden>
       <div class="overview">
@@ -26,6 +36,16 @@
         <article class="panel stat"><div class="statLabel">Проверка соединения</div><div id="healthValue" class="statValue">—</div><div id="lastCheck" class="muted">—</div></article>
         <article class="panel stat"><div class="statLabel">Внешний IP</div><div id="exitIP" class="statValue monospace">—</div><div id="proxyAddress" class="muted monospace">—</div></article>
       </div>
+      <section class="panel" style="margin-bottom:16px">
+        <div class="sectionHeader"><div><h2>Автоматическое восстановление</h2><p>Статус поиска, обновления подписки и повторных попыток.</p></div><button id="eventsRefreshBtn" type="button" class="secondary">Обновить историю</button></div>
+        <div class="overview" style="margin-bottom:12px">
+          <div><div class="statLabel">Режим</div><div id="recoveryPhase" class="statValue">—</div></div>
+          <div><div class="statLabel">Проверено серверов</div><div id="recoveryProgress" class="statValue">—</div></div>
+          <div><div class="statLabel">Следующий повтор</div><div id="recoveryRetry" class="statValue">—</div></div>
+        </div>
+        <div class="statLabel">История событий (последние 120)</div>
+        <div id="gatewayEvents" class="serverList muted" aria-live="polite">Нет записей</div>
+      </section>
       <div class="columns">
         <section class="panel">
           <div class="sectionHeader"><div><h2>Подписки</h2><p>Выбери подписку для просмотра серверов.</p></div><button id="refreshBtn" type="button" class="ghost">Обновить список</button></div>

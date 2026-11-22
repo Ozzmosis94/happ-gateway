@@ -16,7 +16,20 @@ import (
 // ExternalIP connects through a local SOCKS5 proxy to Cloudflare's trace
 // endpoint and returns the visible external IP address.
 func ExternalIP(socksAddr string, timeout time.Duration) (string, error) {
-	return fetchViaSOCKS(socksAddr, "https://cloudflare.com/cdn-cgi/trace", timeout)
+ deadline:=time.Now().Add(timeout)
+ endpoints:=[]string{"https://cloudflare.com/cdn-cgi/trace","https://api.ipify.org"}
+ var last error
+ for _,endpoint:=range endpoints {
+  remaining:=time.Until(deadline)
+  if remaining<=0{break}
+  attempt:=remaining
+  if endpoint==endpoints[0] && remaining>2*time.Second{attempt=remaining/2}
+  value,err:=fetchViaSOCKS(socksAddr,endpoint,attempt)
+  if err==nil && net.ParseIP(strings.TrimSpace(value))!=nil{return strings.TrimSpace(value),nil}
+  if err!=nil{last=err}else{last=fmt.Errorf("%s returned invalid external IP",endpoint)}
+ }
+ if last==nil{last=context.DeadlineExceeded}
+ return "",fmt.Errorf("proxy egress check failed: %w",last)
 }
 
 // FetchURL fetches a URL through the SOCKS5 proxy and returns the response
@@ -52,6 +65,7 @@ func fetchViaSOCKS(socksAddr, urlStr string, timeout time.Duration) (string, err
 		return "", fmt.Errorf("request: %w", err)
 	}
 	defer resp.Body.Close()
+ if resp.StatusCode < 200 || resp.StatusCode >=300{return "",fmt.Errorf("health endpoint returned HTTP %d",resp.StatusCode)}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {

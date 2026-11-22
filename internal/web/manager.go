@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/netip"
 	"net/url"
 	"strings"
@@ -28,12 +29,24 @@ type Options struct {
 
 type Manager struct {
 	mu         sync.Mutex
+	recoveryMu sync.Mutex
+	history map[string]nodeHistory
+	events []GatewayEvent
+ phase string
+ checkedCandidates int
+ totalCandidates int
+ retryFailures int
+ refreshFailures int
+ refreshPending bool
+ nextRefreshAt time.Time
 	opts       Options
 	store      *store.Store
 	instance   *xray.Instance
 	current    *Connection
 	generation uint64
 	health     Health
+	failures   int
+	autoRetryAt time.Time
 }
 
 type Subscription struct {
@@ -70,6 +83,13 @@ type Health struct {
 }
 
 type Status struct {
+ Phase string `json:"phase"`
+ Checked int `json:"checked"`
+ Total int `json:"total"`
+ RetryAt *time.Time `json:"retryAt,omitempty"`
+ RefreshRetryAt *time.Time `json:"refreshRetryAt,omitempty"`
+	AutoConnect bool `json:"autoConnect"`
+	Failures int `json:"failures"`
 	Running    bool        `json:"running"`
 	Connection *Connection `json:"connection,omitempty"`
 	Health     Health      `json:"health"`
@@ -104,7 +124,10 @@ func NewManager(opts Options) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{opts: opts, store: st}, nil
+	m := &Manager{opts: opts, store: st}
+	m.loadHistory()
+ m.loadEvents()
+ return m,nil
 }
 
 func (m *Manager) Subscriptions() []Subscription {
@@ -183,7 +206,8 @@ func (m *Manager) Add(ctx context.Context, name, rawURL string) error {
 	if _, exists := m.store.Find(name); exists {
 		return fmt.Errorf("subscription %q already exists", name)
 	}
-	return m.store.Upsert(entry)
+	if err := m.store.Upsert(entry); err != nil { return err }
+	return m.store.SetAutoConnect(true)
 }
 
 func (m *Manager) Update(ctx context.Context, name string, force bool) error {
@@ -236,6 +260,10 @@ func (m *Manager) Remove(name string) error {
 func (m *Manager) Connect(name string, index int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.connectLocked(name,index)
+}
+
+func (m *Manager) connectLocked(name string,index int) error {
 	if name == "" {
 		name = m.store.Active()
 	}
@@ -274,7 +302,12 @@ func (m *Manager) Connect(name string, index int) error {
 	m.instance = inst
 	m.current = &Connection{Subscription: name, Index: index, Tag: s.Tag, Protocol: s.Protocol, StartedAt: time.Now()}
 	m.health = Health{}
-	m.generation++
+ m.failures=0
+ m.retryFailures=0
+ m.phase="connecting"
+ m.generation++
+	if err:=m.store.SetAutoConnect(true);err!=nil {log.Printf("cannot save automatic mode: %v",err)}
+ m.appendEventLocked("connection","info",fmt.Sprintf("Запущен сервер %s, проверяется доступность",s.Tag))
 	go m.checkOnce() // Check immediately after connecting; stale results are generation-guarded.
 	return nil
 }
@@ -295,10 +328,13 @@ func (m *Manager) stopLocked() error {
 func (m *Manager) Disconnect() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.store.SetAutoConnect(false); err != nil { return fmt.Errorf("persist automatic disconnect: %w", err) }
 	if err := m.store.SetLastConnection(nil); err != nil {
 		return fmt.Errorf("persist disconnect: %w", err)
 	}
-	return m.stopLocked()
+	m.phase="disabled"
+ m.appendEventLocked("connection","info","Автоматическое подключение отключено пользователем")
+ return m.stopLocked()
 }
 func (m *Manager) Close() error {
 	m.mu.Lock()
@@ -312,7 +348,7 @@ func (m *Manager) Close() error {
 func (m *Manager) Restore() error {
 	m.mu.Lock()
 	preference := m.store.LastConnection()
-	if preference == nil {
+	if !m.store.AutoConnect() || preference == nil {
 		m.mu.Unlock()
 		return nil
 	}
@@ -337,7 +373,9 @@ func (m *Manager) Restore() error {
 func (m *Manager) Status() Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	result := Status{Running: m.instance != nil, Health: m.health, ProxySOCKS: m.opts.ProxyListen + ":10808", ProxyHTTP: m.opts.ProxyListen + ":10809"}
+	result := Status{AutoConnect:m.store.AutoConnect(),Failures:m.failures,Phase:m.phase,Checked:m.checkedCandidates,Total:m.totalCandidates,Running:m.instance!=nil,Health:m.health,ProxySOCKS:m.opts.ProxyListen+":10808",ProxyHTTP:m.opts.ProxyListen+":10809"}
+ if !m.autoRetryAt.IsZero() {retry:=m.autoRetryAt;result.RetryAt=&retry}
+ if !m.nextRefreshAt.IsZero() {retry:=m.nextRefreshAt;result.RefreshRetryAt=&retry}
 	if m.current != nil {
 		cpy := *m.current
 		result.Connection = &cpy
@@ -345,37 +383,109 @@ func (m *Manager) Status() Status {
 	return result
 }
 
+// Monitor checks actual proxied egress, and recovers automatically after outages.
+// No busy-loop: the background loop retries with a bounded interval.
 func (m *Manager) Monitor(ctx context.Context) {
-	timer := time.NewTicker(30 * time.Second)
-	defer timer.Stop()
-	for {
-		m.checkOnce()
-		select {
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-		}
-	}
+ ticker := time.NewTicker(30 * time.Second)
+ defer ticker.Stop()
+ refreshTicker:=time.NewTicker(6 * time.Hour)
+ defer refreshTicker.Stop()
+ m.monitorStep(ctx)
+ for {
+  select {
+  case <-ctx.Done(): return
+  case <-ticker.C: m.monitorStep(ctx)
+  case <-refreshTicker.C: m.refreshSubscriptions(ctx)
+  }
+ }
 }
+
+func (m *Manager) monitorStep(ctx context.Context) {
+ // checkOnce stores a result before the recovery decision is made.
+ m.checkOnce()
+ m.mu.Lock()
+ enabled:=m.store.AutoConnect()
+ running:=m.instance!=nil
+ healthy:=m.health.Healthy
+ checked:=m.health.CheckedAt!=nil
+ if running && checked && !healthy {m.failures++} else if healthy {m.failures=0}
+ failures:=m.failures
+ retryAt:=m.autoRetryAt
+ needsRefresh:=m.refreshPending && !time.Now().Before(m.nextRefreshAt)
+ refreshName:=m.store.Active()
+ m.mu.Unlock()
+ if needsRefresh && refreshName!=""{m.refreshAfterFailure(ctx,refreshName)}
+ if !enabled || (running && (healthy || failures<3)) || time.Now().Before(retryAt){return}
+ if err:=m.recover(ctx);err!=nil{
+  m.mu.Lock()
+  // Do not reschedule an automatic reconnect after the user disabled it.
+  if !m.store.AutoConnect(){m.mu.Unlock();return}
+  m.retryFailures++
+  delay:=retryDelay(m.retryFailures,maxRecoveryBackoff)
+  m.autoRetryAt=time.Now().Add(delay)
+  m.phase="retrying"
+  m.appendEventLocked("recovery","error",fmt.Sprintf("Нет рабочего сервера; повтор через %s",delay.Round(time.Second)))
+  m.mu.Unlock()
+  log.Printf("Automatic recovery failed: %v",err)
+ }
+}
+
 func (m *Manager) checkOnce() {
-	m.mu.Lock()
-	active := m.instance != nil
-	generation := m.generation
-	m.mu.Unlock()
-	if !active {
-		return
-	}
-	ip, err := check.ExternalIP("127.0.0.1:10808", 8*time.Second)
-	now := time.Now()
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.instance == nil || generation != m.generation {
-		return
-	}
-	m.health = Health{CheckedAt: &now, Healthy: err == nil}
-	if err == nil {
-		m.health.ExitIP = ip
-	} else {
-		m.health.Error = err.Error()
-	}
+ m.mu.Lock()
+ active:=m.instance!=nil
+ generation:=m.generation
+ var hash string
+ if active && m.current!=nil{
+  if sub,ok:=m.store.Find(m.current.Subscription);ok{
+   servers:=sub.Servers()
+   if m.current.Index>0 && m.current.Index<=len(servers){
+    hash=store.HashLink(servers[m.current.Index-1].Raw)
+   }
+  }
+ }
+ m.mu.Unlock()
+ if !active{return}
+ start:=time.Now()
+ ip,err:=check.ExternalIP("127.0.0.1:10808",8*time.Second)
+ now:=time.Now()
+ m.mu.Lock()
+ if m.instance==nil || generation!=m.generation{m.mu.Unlock();return}
+ previous:=m.health.Healthy
+ m.health=Health{CheckedAt:&now,Healthy:err==nil}
+ if err==nil {m.health.ExitIP=ip; m.phase="connected"}else{
+  m.health.Error=err.Error()
+  if previous{m.phase="degraded";m.appendEventLocked("health","warning","Проверка соединения не пройдена") }
+ }
+ record:=err==nil && hash!="" && (!previous || now.Sub(m.history[hash].LastSuccess)>time.Hour)
+ m.mu.Unlock()
+ if record{m.recordProbe(hash,time.Since(start),true)}
+}
+
+func (m *Manager) refreshSubscriptions(ctx context.Context) {
+ m.mu.Lock()
+ names:=make([]string,0)
+ for _,sub:=range m.store.Subscriptions(){names=append(names,sub.Name)}
+ m.mu.Unlock()
+ for _,name:=range names{
+  if ctx.Err()!=nil{return}
+  m.event("refresh","info",fmt.Sprintf("Плановое обновление подписки %s",name))
+  err:=m.Update(ctx,name,false)
+  if err!=nil{
+   m.mu.Lock()
+   if name==m.store.Active(){
+    m.refreshFailures++
+    delay:=retryDelay(m.refreshFailures,maxRefreshBackoff)
+    m.nextRefreshAt=time.Now().Add(delay)
+    m.refreshPending=true
+    m.appendEventLocked("refresh","warning",fmt.Sprintf("Плановое обновление %s не удалось; повтор через %s",name,delay.Round(time.Second)))
+   }
+   m.mu.Unlock()
+   log.Printf("Scheduled subscription refresh failed for %s: %v",name,err)
+  }else{
+   m.mu.Lock()
+   if name==m.store.Active(){m.refreshFailures=0;m.refreshPending=false;m.nextRefreshAt=time.Now().Add(refreshCooldown)}
+   m.mu.Unlock()
+   m.event("refresh","success",fmt.Sprintf("Подписка %s обновлена",name))
+  }
+ }
 }

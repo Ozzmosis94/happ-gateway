@@ -7,6 +7,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+ "path/filepath"
+ "crypto/rand"
+ "encoding/hex"
 	"strings"
 	"time"
 )
@@ -17,17 +20,20 @@ func Serve(ctx context.Context) error {
 	if home == "" {
 		home = "/data"
 	}
-	token, generated, err := loadWebToken(home)
-	if err != nil {
-		return err
-	}
-	if generated {
-		log.Printf("First run: access token saved to %s/web-token", home)
-	}
-	if os.Getenv("WEB_TOKEN") == "" {
-		log.Printf("Web panel access token: %s", token)
-		log.Print("Keep Docker logs private: the access token is shown above.")
-	}
+ if err:=os.MkdirAll(home,0700);err!=nil{return err}
+ creds,err:=newCredentialStore(home)
+ if err!=nil{return err}
+ // Stable, random session secret; never emit it in logs.
+ sessionPath:=filepath.Join(home,"session-key")
+ keyData,err:=os.ReadFile(sessionPath)
+ if os.IsNotExist(err){
+  buf:=make([]byte,32);if _,err=rand.Read(buf);err!=nil{return err}
+  candidate:=[]byte(hex.EncodeToString(buf))
+  if err=os.WriteFile(sessionPath,candidate,0600);err!=nil{return err}
+  keyData=candidate
+ }else if err!=nil{return err}
+ sessionKey:=string(keyData)
+ if len(sessionKey)<32{return fmt.Errorf("invalid session secret")}
 	addr := os.Getenv("WEB_ADDR")
 	if addr == "" {
 		addr = "127.0.0.1:8088"
@@ -55,7 +61,7 @@ func Serve(ctx context.Context) error {
 
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           NewHandler(manager, token),
+		Handler:           NewHandler(manager, creds, sessionKey),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      35 * time.Second,
