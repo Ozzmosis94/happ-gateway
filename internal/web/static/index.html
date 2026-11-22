@@ -36,6 +36,16 @@
         <article class="panel stat"><div class="statLabel">Проверка соединения</div><div id="healthValue" class="statValue">—</div><div id="lastCheck" class="muted">—</div></article>
         <article class="panel stat"><div class="statLabel">Внешний IP</div><div id="exitIP" class="statValue monospace">—</div><div id="proxyAddress" class="muted monospace">—</div></article>
       </div>
+      <section class="panel" style="margin-bottom:16px">
+        <div class="sectionHeader"><div><h2>Автоматическое восстановление</h2><p>Статус поиска, обновления подписки и повторных попыток.</p></div><button id="eventsRefreshBtn" type="button" class="secondary">Обновить историю</button></div>
+        <div class="overview" style="margin-bottom:12px">
+          <div><div class="statLabel">Режим</div><div id="recoveryPhase" class="statValue">—</div></div>
+          <div><div class="statLabel">Проверено серверов</div><div id="recoveryProgress" class="statValue">—</div></div>
+          <div><div class="statLabel">Следующий повтор</div><div id="recoveryRetry" class="statValue">—</div></div>
+        </div>
+        <div class="statLabel">История событий (последние 120)</div>
+        <div id="gatewayEvents" class="serverList muted" aria-live="polite">Нет записей</div>
+      </section>
       <div class="columns">
         <section class="panel">
           <div class="sectionHeader"><div><h2>Подписки</h2><p>Выбери подписку для просмотра серверов.</p></div><button id="refreshBtn" type="button" class="ghost">Обновить список</button></div>
