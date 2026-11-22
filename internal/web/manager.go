@@ -400,21 +400,33 @@ func (m *Manager) monitorStep(ctx context.Context) {
 
 func (m *Manager) checkOnce() {
  m.mu.Lock()
- active := m.instance != nil
- generation := m.generation
+ active:=m.instance!=nil
+ generation:=m.generation
+ var hash string
+ if active && m.current!=nil{
+  if sub,ok:=m.store.Find(m.current.Subscription);ok{
+   servers:=sub.Servers()
+   if m.current.Index>0 && m.current.Index<=len(servers){
+    hash=store.HashLink(servers[m.current.Index-1].Raw)
+   }
+  }
+ }
  m.mu.Unlock()
- if !active {return}
+ if !active{return}
+ start:=time.Now()
  ip,err:=check.ExternalIP("127.0.0.1:10808",8*time.Second)
  now:=time.Now()
  m.mu.Lock()
- defer m.mu.Unlock()
- if m.instance==nil || generation!=m.generation{return}
+ if m.instance==nil || generation!=m.generation{m.mu.Unlock();return}
  previous:=m.health.Healthy
  m.health=Health{CheckedAt:&now,Healthy:err==nil}
- if err==nil {m.health.ExitIP=ip} else {
+ if err==nil {m.health.ExitIP=ip}else{
   m.health.Error=err.Error()
-  if previous {log.Printf("Gateway health degraded: %v",err)}
+  if previous{log.Printf("Gateway health degraded: %v",err)}
  }
+ record:=err==nil && hash!="" && (!previous || now.Sub(m.history[hash].LastSuccess)>time.Hour)
+ m.mu.Unlock()
+ if record{m.recordProbe(hash,time.Since(start),true)}
 }
 
 func (m *Manager) refreshSubscriptions(ctx context.Context) {
