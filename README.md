@@ -4,7 +4,7 @@
 
 > **Unofficial project.** Happ Gateway is an independently developed, self-hosted gateway for Happ-compatible subscriptions. It is **not an official Happ product**, and is not affiliated with, endorsed by, or supported by the Happ developers or publisher. **Happ** is referenced only to describe subscription compatibility.
 
-**Happ Gateway** is a self-hosted proxy/subscription manager, featuring an independent Go CLI, embedded Xray-core, and a token-protected web dashboard. The project is developed from this repository without tracking releases or commits from intermediary forks.
+**Happ Gateway** is a self-hosted proxy/subscription manager, featuring an independent Go CLI, embedded Xray-core, and a password-protected web dashboard. The project is developed from this repository without tracking releases or commits from intermediary forks.
 
 > **Code provenance:** Happ Gateway is based on earlier public happ-cli/proxray code. See [NOTICE.md](NOTICE.md) about provenance and distribution rights. This repository does not assert independent licensing of upstream contributions.
 
@@ -47,17 +47,15 @@ The default per-user data directory is named `happ-gateway`. Existing happ-cli s
 docker run -d --name happ-gateway --restart unless-stopped --network host -v happ-gateway-data:/data ghcr.io/ozzmosis94/happ-gateway:latest
 ```
 
-On the same Linux machine, open **http://127.0.0.1:8088**. Get the login token from:
+On the Linux host, open **http://127.0.0.1:8088**. On a new installation, choose an administrator username and password (12 characters minimum). Credentials are stored as an Argon2id hash in `/data/admin.json` and authenticated via a signed HttpOnly cookie.
 
-```bash
-docker logs happ-gateway
-```
+When upgrading an existing installation, first-time password setup additionally requires the **old access token** from `/data/web-token` or the existing `WEB_TOKEN` environment variable. The token is only used for this one-time migration and is no longer printed to container logs.
 
-The gateway creates a cryptographically random token on its first start and persists it at `/data/web-token` inside the named Docker volume. The dashboard uses an HttpOnly session cookie to remember login for 30 days, with a sign-out button. It prints the token to container logs at startup, so **keep Docker logs private**. To set your own token, pass `-e WEB_TOKEN='a-long-random-secret'` to `docker run` instead.
+Keep the `/data` volume, which holds subscriptions and authentication state.
 
 The SOCKS5 and HTTP proxies listen locally on ports 10808 and 10809 after you connect to a server in the dashboard. For remote administration, open an SSH tunnel: `ssh -L 8088:127.0.0.1:8088 user@server-ip`.
 
-Update without losing the saved subscriptions and token:
+Update without losing the saved subscriptions and administrator:
 
 ```bash
 docker pull ghcr.io/ozzmosis94/happ-gateway:latest
@@ -71,7 +69,7 @@ Docker Compose is also supported: `docker compose up -d` from the repository dir
 
 When you select a proxy server in the dashboard, Happ Gateway persists that choice and attempts to reconnect to the **same server** when the container restarts. Server identity is verified by a hash of the original share link rather than a fragile list position. After upgrading from an older image, connect manually **once** to save a selection. Explicitly clicking Disconnect disables autoconnection. If the server was removed from the cached subscription, restore is skipped and logged.
 
-The dashboard remembers login for 30 days using an HttpOnly, SameSite=Strict cookie. Logging out clears it, while changing the administrator token invalidates existing sessions. Local-network HTTP is not encrypted; use HTTPS for untrusted networks.
+The dashboard remembers login for 30 days using an HttpOnly, SameSite=Strict cookie. Logging out clears it, while changing the session signing key invalidates existing sessions. Local-network HTTP is not encrypted; use HTTPS for untrusted networks.
 
 ## Release and dependency policy
 
@@ -82,8 +80,8 @@ The dashboard remembers login for 30 days using an HttpOnly, SameSite=Strict coo
 
 ## Security
 
-The Web API requires a bearer token. Do not forward the proxy or dashboard ports from a public router. The proxy endpoints are not password-protected: use localhost or an explicitly approved LAN address, restrict network access, and protect the configuration volume. Subscription links and state files may contain credentials.
+The web API requires an authenticated administrator session. Do not forward the proxy or dashboard ports from a public router. The proxy endpoints are not password-protected: use localhost or an explicitly approved LAN address, restrict network access, and protect the configuration volume. Subscription links and state files may contain credentials.
 
 ## Scope
 
-The web panel currently supports proxy mode, while the CLI continues to support TUN. The current version attempts to restore the last explicitly selected server at startup but does not implement continuous retry or automatic server failover.
+The web panel currently supports proxy mode, while the CLI continues to support TUN. The feature branch includes periodic health checks, automatic server failover after three failed checks, and bounded retries. Automatic subscription refresh runs every six hours.
