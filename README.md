@@ -87,3 +87,8 @@ The web API requires an authenticated administrator session. Do not forward the 
 ## Scope
 
 The web panel currently supports proxy mode, while the CLI continues to support TUN. The feature branch includes periodic health checks, automatic server failover after three failed checks, and bounded retries. Automatic subscription refresh runs every six hours.
+
+## Fast recovery for large subscriptions
+
+If the connection fails, Happ Gateway first probes up to **4 ranked nodes** using a persisted successful-connection history. Probes run in isolated temporary Xray instances without stopping the active proxy. If the quick pass fails, the subscription is **refreshed immediately** (at most once every 5 minutes); a failed refresh preserves cached servers. Remaining candidates are checked in **bounded batches of 8 concurrent probes**, with a 5-second budget per candidate, and the fastest verified egress is selected. Scheduled six-hour refresh is independent of emergency refresh.
+
