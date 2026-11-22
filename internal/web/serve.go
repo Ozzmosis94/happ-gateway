@@ -20,16 +20,6 @@ func Serve(ctx context.Context) error {
 	if home == "" {
 		home = "/data"
 	}
- // Old installations must prove possession of the legacy token before claiming
- // their first password account. Fresh installations need no token.
- _, existingTokenErr:=os.Stat(filepath.Join(home,"web-token"))
- migrationRequired:=existingTokenErr==nil || os.Getenv("WEB_TOKEN")!=""
- token:=""
- if migrationRequired {
-  var err error
-  token,_,err=loadWebToken(home)
-  if err!=nil{return err}
- }
  if err:=os.MkdirAll(home,0700);err!=nil{return err}
  creds,err:=newCredentialStore(home)
  if err!=nil{return err}
@@ -71,7 +61,7 @@ func Serve(ctx context.Context) error {
 
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           NewHandler(manager, token, creds, sessionKey, migrationRequired),
+		Handler:           NewHandler(manager, creds, sessionKey),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      35 * time.Second,
