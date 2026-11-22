@@ -2,37 +2,31 @@ package web
 
 import (
 	"net/http"
+ "strings"
 	"net/http/httptest"
 	"testing"
 )
 
-func TestManagementAPIRequiresToken(t *testing.T) {
-	manager, err := NewManager(Options{Home: t.TempDir(), ProxyListen: "127.0.0.1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	token := "0123456789abcdefghij0123456789"
-	handler := NewHandler(manager, token)
-	for _, test := range []struct {
-		header string
-		want   int
-	}{
-		{"", http.StatusUnauthorized},
-		{"Bearer wrong", http.StatusUnauthorized},
-		{"Bearer " + token, http.StatusOK},
-	} {
-		req := httptest.NewRequest(http.MethodGet, "/api/subscriptions", nil)
-		if test.header != "" {
-			req.Header.Set("Authorization", test.header)
-		}
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, req)
-		if response.Code != test.want {
-			t.Errorf("header=%q status=%d want=%d", test.header, response.Code, test.want)
-		}
-	}
+func TestPasswordSetupAndLogin(t *testing.T) {
+ manager,err:=NewManager(Options{Home:t.TempDir(),ProxyListen:"127.0.0.1"})
+ if err!=nil{t.Fatal(err)}
+ creds,err:=newCredentialStore(t.TempDir());if err!=nil{t.Fatal(err)}
+ handler:=NewHandler(manager,"",creds,"12345678901234567890123456789012",false)
+ request:=func(method,path,body,cookie string)*httptest.ResponseRecorder{
+  req:=httptest.NewRequest(method,path,strings.NewReader(body))
+  if cookie!=""{req.Header.Set("Cookie",cookie)}
+  out:=httptest.NewRecorder();handler.ServeHTTP(out,req);return out
+ }
+ if got:=request("GET","/api/subscriptions","","");got.Code!=401{t.Fatalf("unauth status %d",got.Code)}
+ setup:=request("POST","/api/setup",`{"username":"admin","password":"correct-horse-battery"}`,"")
+ if setup.Code!=201{t.Fatalf("setup status=%d body=%s",setup.Code,setup.Body.String())}
+ if got:=request("POST","/api/setup",`{"username":"second","password":"correct-horse-battery"}`,"");got.Code!=409{t.Fatalf("second setup=%d",got.Code)}
+ if got:=request("POST","/api/login",`{"username":"admin","password":"incorrect-password"}`,"");got.Code!=401{t.Fatalf("bad password=%d",got.Code)}
+ login:=request("POST","/api/login",`{"username":"admin","password":"correct-horse-battery"}`,"")
+ if login.Code!=200{t.Fatalf("login=%d",login.Code)}
+ cookie:=login.Result().Cookies()[0]
+ if got:=request("GET","/api/subscriptions","",cookie.String());got.Code!=200{t.Fatalf("authenticated status=%d",got.Code)}
 }
-
 func TestProxyLANValidation(t *testing.T) {
 	cases := []struct {
 		opts  Options
