@@ -2,6 +2,9 @@ package web
 
 import (
  "fmt"
+ "encoding/json"
+ "os"
+ "path/filepath"
  "testing"
  "time"
 
@@ -30,4 +33,33 @@ func TestRecoverWithoutSubscriptionsFails(t *testing.T) {
  if err!=nil{t.Fatal(err)}
  got,err:=manager.rankedCandidates("missing")
  if err==nil||got!=nil{t.Fatalf("missing subscription should fail: %v %v",got,err)}
+}
+
+func TestRecoveryExponentialBackoff(t *testing.T) {
+ previous:=time.Duration(0)
+ for n:=1;n<=20;n++{
+  current:=retryDelay(n,maxRecoveryBackoff)
+  if current<previous {t.Fatalf("retry %d went backwards: %v < %v",n,current,previous)}
+  if current>maxRecoveryBackoff{t.Fatalf("retry exceeds cap: %v",current)}
+  previous=current
+ }
+ if retryDelay(100,maxRefreshBackoff)>maxRefreshBackoff{t.Fatal("refresh delay exceeds cap")}
+}
+
+func TestEventsAreBoundedAndPersisted(t *testing.T) {
+ dir:=t.TempDir()
+ manager,err:=NewManager(Options{Home:dir})
+ if err!=nil{t.Fatal(err)}
+ for i:=0;i<maxGatewayEvents+10;i++{manager.event("test","info",fmt.Sprintf("step %d",i))}
+ events:=manager.Events()
+ if len(events)!=maxGatewayEvents{t.Fatalf("got %d events, expected %d",len(events),maxGatewayEvents)}
+ if events[0].Message!="step 129"{t.Fatalf("latest event=%q",events[0].Message)}
+ data,err:=os.ReadFile(filepath.Join(dir,"gateway-events.json"))
+ if err!=nil{t.Fatal(err)}
+ var fileEvents []GatewayEvent
+ if err:=json.Unmarshal(data,&fileEvents);err!=nil{t.Fatal(err)}
+ if len(fileEvents)!=maxGatewayEvents{t.Fatalf("history persisted %d events",len(fileEvents))}
+ restarted,err:=NewManager(Options{Home:dir})
+ if err!=nil{t.Fatal(err)}
+ if len(restarted.Events())!=maxGatewayEvents{t.Fatal("history was lost on restart")}
 }
