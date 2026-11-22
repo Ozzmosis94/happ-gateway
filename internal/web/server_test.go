@@ -13,6 +13,7 @@ func TestPasswordSetupAndLogin(t *testing.T) {
  handler:=NewHandler(manager,creds,"12345678901234567890123456789012")
  request:=func(method,path,body,cookie string)*httptest.ResponseRecorder{
   req:=httptest.NewRequest(method,path,strings.NewReader(body))
+  req.RemoteAddr="127.0.0.1:43210"
   if cookie!=""{req.Header.Set("Cookie",cookie)}
   out:=httptest.NewRecorder();handler.ServeHTTP(out,req);return out
  }
@@ -20,6 +21,10 @@ func TestPasswordSetupAndLogin(t *testing.T) {
  setup:=request("POST","/api/setup",`{"username":"admin","password":"correct-horse-battery"}`,"")
  if setup.Code!=201{t.Fatalf("setup status=%d body=%s",setup.Code,setup.Body.String())}
  if got:=request("POST","/api/setup",`{"username":"second","password":"correct-horse-battery"}`,"");got.Code!=409{t.Fatalf("second setup=%d",got.Code)}
+ remote:=httptest.NewRequest("POST","/api/setup",strings.NewReader(`{"username":"remote","password":"correct-horse-battery"}`))
+ remote.RemoteAddr="192.168.1.242:52000"
+ rejected:=httptest.NewRecorder();handler.ServeHTTP(rejected,remote)
+ if rejected.Code!=403{t.Fatalf("remote setup status=%d",rejected.Code)}
  if got:=request("POST","/api/login",`{"username":"admin","password":"incorrect-password"}`,"");got.Code!=401{t.Fatalf("bad password=%d",got.Code)}
  login:=request("POST","/api/login",`{"username":"admin","password":"correct-horse-battery"}`,"")
  if login.Code!=200{t.Fatalf("login=%d",login.Code)}
