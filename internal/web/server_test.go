@@ -28,7 +28,7 @@ func TestPasswordSetupAndLogin(t *testing.T) {
  rejected:=httptest.NewRecorder();handler.ServeHTTP(rejected,remote)
  if rejected.Code!=403{t.Fatalf("remote setup status=%d",rejected.Code)}
  if got:=request("POST","/api/login",`{"username":"admin","password":"incorrect-password"}`,"");got.Code!=401{t.Fatalf("bad password=%d",got.Code)}
- login:=request("POST","/api/login",`{"username":"admin","password":"correct-horse-battery","confirmPassword":"correct-horse-battery"}`,"")
+ login:=request("POST","/api/login",`{"username":"admin","password":"correct-horse-battery"}`,"")
  if login.Code!=200{t.Fatalf("login=%d",login.Code)}
  cookie:=login.Result().Cookies()[0]
  if got:=request("GET","/api/subscriptions","",cookie.String());got.Code!=200{t.Fatalf("authenticated status=%d",got.Code)}
