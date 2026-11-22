@@ -31,7 +31,13 @@ type Manager struct {
 	mu         sync.Mutex
 	recoveryMu sync.Mutex
 	history map[string]nodeHistory
-	lastFailureRefresh time.Time
+	events []GatewayEvent
+ phase string
+ checkedCandidates int
+ totalCandidates int
+ retryFailures int
+ refreshFailures int
+ nextRefreshAt time.Time
 	opts       Options
 	store      *store.Store
 	instance   *xray.Instance
@@ -76,6 +82,11 @@ type Health struct {
 }
 
 type Status struct {
+ Phase string `json:"phase"`
+ Checked int `json:"checked"`
+ Total int `json:"total"`
+ RetryAt *time.Time `json:"retryAt,omitempty"`
+ RefreshRetryAt *time.Time `json:"refreshRetryAt,omitempty"`
 	AutoConnect bool `json:"autoConnect"`
 	Failures int `json:"failures"`
 	Running    bool        `json:"running"`
@@ -114,7 +125,8 @@ func NewManager(opts Options) (*Manager, error) {
 	}
 	m := &Manager{opts: opts, store: st}
 	m.loadHistory()
-	return m, nil
+ m.loadEvents()
+ return m,nil
 }
 
 func (m *Manager) Subscriptions() []Subscription {
@@ -289,9 +301,12 @@ func (m *Manager) connectLocked(name string,index int) error {
 	m.instance = inst
 	m.current = &Connection{Subscription: name, Index: index, Tag: s.Tag, Protocol: s.Protocol, StartedAt: time.Now()}
 	m.health = Health{}
-	m.failures = 0
-	m.generation++
+ m.failures=0
+ m.retryFailures=0
+ m.phase="connecting"
+ m.generation++
 	if err:=m.store.SetAutoConnect(true);err!=nil {log.Printf("cannot save automatic mode: %v",err)}
+ m.appendEventLocked("connection","info",fmt.Sprintf("Запущен сервер %s, проверяется доступность",s.Tag))
 	go m.checkOnce() // Check immediately after connecting; stale results are generation-guarded.
 	return nil
 }
@@ -316,7 +331,9 @@ func (m *Manager) Disconnect() error {
 	if err := m.store.SetLastConnection(nil); err != nil {
 		return fmt.Errorf("persist disconnect: %w", err)
 	}
-	return m.stopLocked()
+	m.phase="disabled"
+ m.appendEventLocked("connection","info","Автоматическое подключение отключено пользователем")
+ return m.stopLocked()
 }
 func (m *Manager) Close() error {
 	m.mu.Lock()
@@ -355,7 +372,9 @@ func (m *Manager) Restore() error {
 func (m *Manager) Status() Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	result := Status{AutoConnect: m.store.AutoConnect(), Failures: m.failures, Running: m.instance != nil, Health: m.health, ProxySOCKS: m.opts.ProxyListen + ":10808", ProxyHTTP: m.opts.ProxyListen + ":10809"}
+	result := Status{AutoConnect:m.store.AutoConnect(),Failures:m.failures,Phase:m.phase,Checked:m.checkedCandidates,Total:m.totalCandidates,Running:m.instance!=nil,Health:m.health,ProxySOCKS:m.opts.ProxyListen+":10808",ProxyHTTP:m.opts.ProxyListen+":10809"}
+ if !m.autoRetryAt.IsZero() {retry:=m.autoRetryAt;result.RetryAt=&retry}
+ if !m.nextRefreshAt.IsZero() {retry:=m.nextRefreshAt;result.RefreshRetryAt=&retry}
 	if m.current != nil {
 		cpy := *m.current
 		result.Connection = &cpy
@@ -381,20 +400,29 @@ func (m *Manager) Monitor(ctx context.Context) {
 }
 
 func (m *Manager) monitorStep(ctx context.Context) {
+ // checkOnce stores a result before the recovery decision is made.
  m.checkOnce()
  m.mu.Lock()
- enabled := m.store.AutoConnect()
- running := m.instance != nil
- healthy := m.health.Healthy
- checked := m.health.CheckedAt != nil
- if running && checked && !healthy { m.failures++ } else if healthy { m.failures=0 }
- failures := m.failures
- retryAt := m.autoRetryAt
+ enabled:=m.store.AutoConnect()
+ running:=m.instance!=nil
+ healthy:=m.health.Healthy
+ checked:=m.health.CheckedAt!=nil
+ if running && checked && !healthy {m.failures++} else if healthy {m.failures=0}
+ failures:=m.failures
+ retryAt:=m.autoRetryAt
  m.mu.Unlock()
- if !enabled || (running && failures < 3) || time.Now().Before(retryAt) { return }
- if err:=m.recover(ctx); err!=nil {
-  log.Printf("Automatic connection recovery failed: %v",err)
-  m.mu.Lock();m.autoRetryAt=time.Now().Add(30*time.Second);m.mu.Unlock()
+ if !enabled || (running && (healthy || failures<3)) || time.Now().Before(retryAt){return}
+ if err:=m.recover(ctx);err!=nil{
+  m.mu.Lock()
+  // Do not reschedule an automatic reconnect after the user disabled it.
+  if !m.store.AutoConnect(){m.mu.Unlock();return}
+  m.retryFailures++
+  delay:=retryDelay(m.retryFailures,maxRecoveryBackoff)
+  m.autoRetryAt=time.Now().Add(delay)
+  m.phase="retrying"
+  m.appendEventLocked("recovery","error",fmt.Sprintf("Нет рабочего сервера; повтор через %s",delay.Round(time.Second)))
+  m.mu.Unlock()
+  log.Printf("Automatic recovery failed: %v",err)
  }
 }
 
@@ -420,9 +448,9 @@ func (m *Manager) checkOnce() {
  if m.instance==nil || generation!=m.generation{m.mu.Unlock();return}
  previous:=m.health.Healthy
  m.health=Health{CheckedAt:&now,Healthy:err==nil}
- if err==nil {m.health.ExitIP=ip}else{
+ if err==nil {m.health.ExitIP=ip; m.phase="connected"}else{
   m.health.Error=err.Error()
-  if previous{log.Printf("Gateway health degraded: %v",err)}
+  if previous{m.phase="degraded";m.appendEventLocked("health","warning","Проверка соединения не пройдена") }
  }
  record:=err==nil && hash!="" && (!previous || now.Sub(m.history[hash].LastSuccess)>time.Hour)
  m.mu.Unlock()
