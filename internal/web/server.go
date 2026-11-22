@@ -46,7 +46,7 @@ func NewHandler(m *Manager, creds *credentialStore, sessionKey string) http.Hand
   if err!=nil || net.ParseIP(host)==nil || !net.ParseIP(host).IsLoopback() {
    writeError(w,403,"first-run setup requires access from localhost (use SSH port forwarding)");return
   }
-  var input struct{ Username string `json:"username"`; Password string `json:"password"` }
+  var input struct{ Username string `json:"username"`; Password string `json:"password"`; ConfirmPassword string `json:"confirmPassword"` }
   if !decodeJSON(w,r,&input){return}
   if creds.configured(){writeError(w,409,"administrator already configured");return}
   if err:=creds.setup(input.Username,input.Password);err!=nil{writeError(w,400,err.Error());return}
