@@ -26,7 +26,7 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-func NewHandler(m *Manager, token string, creds *credentialStore, sessionKey string, migrationRequired bool) http.Handler {
+func NewHandler(m *Manager, creds *credentialStore, sessionKey string) http.Handler {
  throttle:=newLoginThrottle()
 
 	mux := http.NewServeMux()
@@ -39,14 +39,13 @@ func NewHandler(m *Manager, token string, creds *credentialStore, sessionKey str
 	mux.HandleFunc("GET /app.js", asset("static/app.js", "application/javascript; charset=utf-8"))
 	mux.HandleFunc("GET /style.css", asset("static/style.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("GET /api/setup/status", func(w http.ResponseWriter,r *http.Request){
-  writeJSON(w,http.StatusOK,map[string]bool{"configured":creds.configured(),"migrationRequired":migrationRequired && !creds.configured()})
+  writeJSON(w,http.StatusOK,map[string]bool{"configured":creds.configured()})
  })
  mux.HandleFunc("POST /api/setup",func(w http.ResponseWriter,r *http.Request){
   if !sameOrigin(r){writeError(w,403,"cross-origin request");return}
-  var input struct{ Username string `json:"username"`; Password string `json:"password"`; MigrationToken string `json:"migrationToken"` }
+  var input struct{ Username string `json:"username"`; Password string `json:"password"`;  }
   if !decodeJSON(w,r,&input){return}
   if creds.configured(){writeError(w,409,"administrator already configured");return}
-  if migrationRequired && subtle.ConstantTimeCompare([]byte(input.MigrationToken),[]byte(token))!=1 {writeError(w,401,"existing installation requires original access token");return}
   if err:=creds.setup(input.Username,input.Password);err!=nil{writeError(w,400,err.Error());return}
   setSessionCookie(w,r,sessionKey,time.Now().Add(sessionDuration))
   writeJSON(w,201,map[string]bool{"ok":true})
