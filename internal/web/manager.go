@@ -280,7 +280,7 @@ func (m *Manager) Connect(name string, index int) error {
 	m.health = Health{}
 	m.failures = 0
 	m.generation++
-	_ = m.store.SetAutoConnect(true)
+	if err:=m.store.SetAutoConnect(true);err!=nil {log.Printf("cannot save automatic mode: %v",err)}
 	go m.checkOnce() // Check immediately after connecting; stale results are generation-guarded.
 	return nil
 }
@@ -319,7 +319,7 @@ func (m *Manager) Close() error {
 func (m *Manager) Restore() error {
 	m.mu.Lock()
 	preference := m.store.LastConnection()
-	if preference == nil {
+	if !m.store.AutoConnect() || preference == nil {
 		m.mu.Unlock()
 		return nil
 	}
