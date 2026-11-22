@@ -1,7 +1,6 @@
 package web
 
 import (
-	"net/http"
  "strings"
 	"net/http/httptest"
 	"testing"
