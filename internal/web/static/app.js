@@ -120,14 +120,14 @@ async function openDashboard() {
   await loadStatus();
   await loadSubscriptions();
   $('loginPanel').hidden = true;
+  $('setupPanel').hidden = true;
   $('dashboard').hidden = false;
   $('logoutBtn').hidden = false;
 }
 
 $('loginForm').addEventListener('submit',(event) => {event.preventDefault();action(async () => {
-  const entered = $('tokenInput').value.trim();
-  await api('/login', {method:'POST',body:JSON.stringify({token:entered})});
-  $('tokenInput').value = '';
+  await api('/login', {method:'POST',body:JSON.stringify({username:$('usernameInput').value.trim(),password:$('passwordInput').value})});
+  $('passwordInput').value = '';
   await openDashboard();
 },'Авторизация успешна.');});
 
@@ -172,7 +172,24 @@ setInterval(() => {
   });
 },10000);
 
-// A session cookie survives page refreshes, tab closure and container restarts.
-openDashboard().catch((error) => {
-  if (error.status !== 401) notice(error.message, true);
-});
+$('setupForm').addEventListener('submit',(event)=>{event.preventDefault();action(async()=>{
+  if ($('setupPassword').value!==$('setupConfirm').value) throw new Error('Пароли не совпадают');
+  await api('/setup',{method:'POST',body:JSON.stringify({
+    username:$('setupUsername').value.trim(),password:$('setupPassword').value,
+    migrationToken:$('migrationToken').value
+  })});
+  $('setupPassword').value='';$('setupConfirm').value='';$('migrationToken').value='';
+  await openDashboard();
+},'Администратор создан.');});
+async function initialize() {
+  const state=await api('/setup/status');
+  if (!state.configured) {
+    $('setupPanel').hidden=false;
+    $('loginPanel').hidden=true;
+    $('migrationField').hidden=!state.migrationRequired;
+    return;
+  }
+  try {await openDashboard();}
+  catch(e){if(e.status===401){$('loginPanel').hidden=false;}else throw e;}
+}
+initialize().catch((error)=>notice(error.message,true));
