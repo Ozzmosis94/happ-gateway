@@ -205,7 +205,7 @@ func (s *Store) SetLastConnection(c *ConnectionPreference) error {
 // explicitly disabled by the user.
 func (s *Store) AutoConnect() bool {
  if s.state.AutoConnect != nil {return *s.state.AutoConnect}
- return len(s.state.Subscriptions)>0
+ return s.state.Connection!=nil
 }
 func (s *Store) SetAutoConnect(enabled bool) error {
  old:=s.state.AutoConnect
