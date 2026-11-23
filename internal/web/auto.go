@@ -165,10 +165,10 @@ func (m *Manager) probeBatch(ctx context.Context,items []nodeCandidate) (probeRe
   m.recordProbe(r.candidate.hash,r.latency,r.err==nil)
   m.mu.Lock();m.checkedCandidates++;m.mu.Unlock()
   if r.err!=nil{
-   m.event("probe","warning",fmt.Sprintf("Сервер #%d не прошёл проверку",r.candidate.index))
+   m.event("probe","warning",fmt.Sprintf("Сервер #%d (%s:%d) не прошёл проверку",r.candidate.index,r.candidate.server.Address,r.candidate.server.Port))
    continue
   }
-  m.event("probe","success",fmt.Sprintf("Сервер #%d доступен, задержка %d мс",r.candidate.index,r.latency.Milliseconds()))
+  m.event("probe","success",fmt.Sprintf("Сервер #%d (%s:%d) доступен, задержка %d мс",r.candidate.index,r.candidate.server.Address,r.candidate.server.Port,r.latency.Milliseconds()))
   if !ok || r.latency<best.latency{best=r;ok=true}
  }
  return best,ok
@@ -193,7 +193,7 @@ func (m *Manager) commitCandidate(expectedGeneration uint64,name string,p probeR
  m.autoRetryAt=time.Time{}
  m.retryFailures=0
  m.phase="connected"
- m.appendEventLocked("connection","success",fmt.Sprintf("Подключён %s / %s, задержка %d мс",name,p.candidate.server.Tag,p.latency.Milliseconds()))
+ m.appendEventLocked("connection","success",fmt.Sprintf("Подключён %s / %s (%s:%d), задержка %d мс",name,p.candidate.server.Tag,p.candidate.server.Address,p.candidate.server.Port,p.latency.Milliseconds()))
  log.Printf("Automatic failover selected %s server %d (verified %dms)",name,index,p.latency.Milliseconds())
  return nil
 }
@@ -287,7 +287,7 @@ func (m *Manager) recover(ctx context.Context) error {
   for _,candidate:=range candidates {
    if candidate.hash!=preferred{continue}
    attempted[preferred]=true
-   m.event("probe","info",fmt.Sprintf("Проверка сохранённого сервера: %s",candidate.server.Tag))
+   m.event("probe","info",fmt.Sprintf("Проверка сохранённого сервера: %s (%s:%d)",candidate.server.Tag,candidate.server.Address,candidate.server.Port))
    result:=probeNode(ctx,candidate)
    m.recordProbe(candidate.hash,result.latency,result.err==nil)
    m.mu.Lock();m.checkedCandidates++;m.mu.Unlock()
