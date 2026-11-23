@@ -21,8 +21,8 @@ import (
 )
 
 const (
- concurrentProbes = 8
- probeTimeout = 5 * time.Second
+ concurrentProbes = 3
+ probeTimeout = 9 * time.Second
  refreshCooldown = 5 * time.Minute
  maxRecoveryBackoff = 10 * time.Minute
  maxRefreshBackoff = 15 * time.Minute
@@ -165,13 +165,26 @@ func (m *Manager) probeBatch(ctx context.Context,items []nodeCandidate) (probeRe
   m.recordProbe(r.candidate.hash,r.latency,r.err==nil)
   m.mu.Lock();m.checkedCandidates++;m.mu.Unlock()
   if r.err!=nil{
-   m.event("probe","warning",fmt.Sprintf("Сервер #%d (%s:%d) не прошёл проверку",r.candidate.index,r.candidate.server.Address,r.candidate.server.Port))
+   m.event("probe","warning",fmt.Sprintf("Сервер #%d (%s:%d) не прошёл проверку: %v",r.candidate.index,r.candidate.server.Address,r.candidate.server.Port,r.err))
    continue
   }
   m.event("probe","success",fmt.Sprintf("Сервер #%d (%s:%d) доступен, задержка %d мс",r.candidate.index,r.candidate.server.Address,r.candidate.server.Port,r.latency.Milliseconds()))
   if !ok || r.latency<best.latency{best=r;ok=true}
  }
  return best,ok
+}
+
+// Probe ranked candidates in small batches. Stop on the first batch with a
+// verified working node instead of scanning every server and overloading Xray.
+func scanCandidates(ctx context.Context, candidates []nodeCandidate, run func(context.Context, []nodeCandidate) (probeResult,bool)) (probeResult,bool) {
+ for start:=0;start<len(candidates);start+=concurrentProbes {
+  if ctx.Err()!=nil {return probeResult{},false}
+  end:=start+concurrentProbes
+  if end>len(candidates){end=len(candidates)}
+  best,ok:=run(ctx,candidates[start:end])
+  if ok {return best,true}
+ }
+ return probeResult{},false
 }
 
 func (m *Manager) commitCandidate(expectedGeneration uint64,name string,p probeResult) error {
@@ -259,7 +272,10 @@ func (m *Manager) recover(ctx context.Context) error {
  m.recoveryMu.Lock()
  defer m.recoveryMu.Unlock()
  m.mu.Lock()
- if !m.store.AutoConnect(){m.mu.Unlock();return nil}
+ if !m.store.AutoConnect() || (m.instance!=nil && (m.health.Healthy || m.health.CheckedAt==nil)) {
+  m.mu.Unlock()
+  return nil
+ }
  generation:=m.generation
  name:=m.store.Active()
  preferred:=""
@@ -295,7 +311,7 @@ func (m *Manager) recover(ctx context.Context) error {
     m.event("probe","success","Сохранённый сервер доступен")
     return m.commitCandidate(generation,name,result)
    }
-   m.event("probe","warning","Сохранённый сервер недоступен")
+   m.event("probe","warning",fmt.Sprintf("Сохранённый сервер %s:%d недоступен: %v",candidate.server.Address,candidate.server.Port,result.err))
    break
   }
  }
@@ -314,7 +330,7 @@ func (m *Manager) recover(ctx context.Context) error {
     m.recordProbe(candidate.hash,result.latency,result.err==nil)
     m.mu.Lock();m.checkedCandidates++;m.mu.Unlock()
     if result.err==nil{return m.commitCandidate(generation,name,result)}
-    m.event("probe","warning","Повторная проверка сервера не прошла")
+    m.event("probe","warning",fmt.Sprintf("Повторная проверка %s:%d не прошла: %v",candidate.server.Address,candidate.server.Port,result.err))
     break
    }
   }
@@ -330,13 +346,18 @@ func (m *Manager) recover(ctx context.Context) error {
   rest=append(rest,candidate)
  }
  m.mu.Lock();m.totalCandidates=len(rest)+m.checkedCandidates;m.mu.Unlock()
- m.event("recovery","info",fmt.Sprintf("Проверка альтернатив: %d серверов, параллельно не более %d",len(rest),concurrentProbes))
+ m.event("recovery","info",fmt.Sprintf("Поиск альтернатив: до %d серверов, небольшими группами по %d",len(rest),concurrentProbes))
  if len(rest)==0{return errors.New("нет других серверов для проверки")}
- // Parallel probes use their own ephemeral SOCKS ports. Wait for the bounded
- // scan to finish, then choose the lowest observed successful latency.
+ // Scans stop at the first confirmed healthy batch. A healthy fallback is
+ // preferable to exhaustive fastest-node discovery during an outage.
+ m.mu.Lock()
+ superseded:=!m.store.AutoConnect() || m.generation!=generation
+ m.mu.Unlock()
+ if superseded{return errors.New("recovery superseded by another connection")}
  scanCtx,cancel:=context.WithTimeout(ctx,time.Duration((len(rest)+concurrentProbes-1)/concurrentProbes)*(probeTimeout+time.Second))
  defer cancel()
- best,ok:=m.probeBatch(scanCtx,rest)
+ best,ok:=scanCandidates(scanCtx,rest,m.probeBatch)
  if ok {return m.commitCandidate(generation,name,best)}
+ if err:=scanCtx.Err();err!=nil {return fmt.Errorf("scan interrupted: %w",err)}
  return fmt.Errorf("no usable servers found in subscription %q",name)
 }
