@@ -5,6 +5,7 @@ let subscriptions = [];
 let currentStatus = null;
 let gatewayEventHistory = [];
 let eventFilter = 'all';
+let displayedServerSubscription = '';
 
 function notice(message, isError = false) {
   $('notice').textContent = message;
@@ -94,9 +95,19 @@ function textNode(tag, className, value) {
 }
 
 async function loadServers() {
-  const root = $('servers');root.replaceChildren();
-  if (!selected) {root.textContent = 'Добавь подписку, чтобы увидеть серверы.';return;}
-  const servers = await api('/subscriptions/' + encodeURIComponent(selected) + '/servers');
+  const root = $('servers');
+  const selection = selected;
+  const scrollTop = selection === displayedServerSubscription ? root.scrollTop : 0;
+  if (!selection) {
+    root.replaceChildren();
+    root.textContent = 'Добавь подписку, чтобы увидеть серверы.';
+    displayedServerSubscription = '';
+    return;
+  }
+  const servers = await api('/subscriptions/' + encodeURIComponent(selection) + '/servers');
+  if (selection !== selected) return; // Ignore stale responses after switching subscriptions.
+  root.replaceChildren();
+  displayedServerSubscription = selection;
   if (!servers.length) {root.textContent = 'В этой подписке нет серверов.';return;}
   for (const server of servers) {
     const active = currentStatus?.running && currentStatus.connection?.subscription === selected && currentStatus.connection?.index === server.index;
@@ -113,6 +124,7 @@ async function loadServers() {
     },'Прокси запущен; проверка доступности выполнится автоматически.'));
     row.append(description,button);root.append(row);
   }
+  root.scrollTop = scrollTop;
 }
 
 function formatEndpoint(address, port) {
