@@ -29,6 +29,7 @@ type Options struct {
 
 type Manager struct {
 	mu         sync.Mutex
+	healthCheckMu sync.Mutex // prevent older checks overwriting newer results
 	recoveryMu sync.Mutex
 	history map[string]nodeHistory
 	events []GatewayEvent
@@ -236,7 +237,35 @@ func (m *Manager) Update(ctx context.Context, name string, force bool) error {
 	if _, stillExists := m.store.Find(name); !stillExists {
 		return errors.New("subscription was removed while updating")
 	}
-	return m.store.Upsert(next)
+	if err := m.store.Upsert(next); err != nil {
+		return err
+	}
+	m.reconcileCurrentIndexLocked(name)
+	return nil
+}
+
+// A subscription refresh may reorder servers. Keep the selected server
+// associated with its stable share-link hash rather than the old list index.
+// Caller must hold m.mu.
+func (m *Manager) reconcileCurrentIndexLocked(name string) {
+	if m.current == nil || m.current.Subscription != name {
+		return
+	}
+	m.current.Index = 0
+	preference := m.store.LastConnection()
+	if preference == nil || preference.Subscription != name {
+		return
+	}
+	sub, ok := m.store.Find(name)
+	if !ok {
+		return
+	}
+	for i, server := range sub.Servers() {
+		if store.HashLink(server.Raw) == preference.LinkHash {
+			m.current.Index = i + 1
+			return
+		}
+	}
 }
 
 var ErrLargeDrop = errors.New("server count dropped by more than half; confirm update")
@@ -306,6 +335,7 @@ func (m *Manager) connectLocked(name string,index int) error {
 	m.health = Health{}
  m.failures=0
  m.retryFailures=0
+ m.autoRetryAt=time.Time{}
  m.phase="connecting"
  m.generation++
 	if err:=m.store.SetAutoConnect(true);err!=nil {log.Printf("cannot save automatic mode: %v",err)}
@@ -412,6 +442,7 @@ func (m *Manager) monitorStep(ctx context.Context) {
  checked:=m.health.CheckedAt!=nil
  if running && checked && !healthy {m.failures++} else if healthy {m.failures=0}
  failures:=m.failures
+ generation:=m.generation
  retryAt:=m.autoRetryAt
  needsRefresh:=m.refreshPending && !time.Now().Before(m.nextRefreshAt)
  refreshName:=m.store.Active()
@@ -421,7 +452,7 @@ func (m *Manager) monitorStep(ctx context.Context) {
  if err:=m.recover(ctx);err!=nil{
   m.mu.Lock()
   // Do not reschedule an automatic reconnect after the user disabled it.
-  if !m.store.AutoConnect(){m.mu.Unlock();return}
+  if !m.store.AutoConnect() || m.generation != generation {m.mu.Unlock();return}
   m.retryFailures++
   delay:=retryDelay(m.retryFailures,maxRecoveryBackoff)
   m.autoRetryAt=time.Now().Add(delay)
@@ -433,16 +464,15 @@ func (m *Manager) monitorStep(ctx context.Context) {
 }
 
 func (m *Manager) checkOnce() {
+ m.healthCheckMu.Lock()
+ defer m.healthCheckMu.Unlock()
  m.mu.Lock()
  active:=m.instance!=nil
  generation:=m.generation
  var hash string
  if active && m.current!=nil{
-  if sub,ok:=m.store.Find(m.current.Subscription);ok{
-   servers:=sub.Servers()
-   if m.current.Index>0 && m.current.Index<=len(servers){
-    hash=store.HashLink(servers[m.current.Index-1].Raw)
-   }
+  if preference:=m.store.LastConnection();preference!=nil && preference.Subscription==m.current.Subscription {
+   hash=preference.LinkHash
   }
  }
  m.mu.Unlock()

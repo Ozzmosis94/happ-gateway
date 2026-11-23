@@ -3,6 +3,8 @@ const $ = (id) => document.getElementById(id);
 let selected = '';
 let subscriptions = [];
 let currentStatus = null;
+let gatewayEventHistory = [];
+let eventFilter = 'all';
 
 function notice(message, isError = false) {
   $('notice').textContent = message;
@@ -120,17 +122,16 @@ function formatEndpoint(address, port) {
 }
 
 function connectionState(status) {
-  if (!status.running && !status.autoConnect) return { tone: 'neutral', label: 'Отключено' };
-  if (!status.running) {
-    if (['connecting', 'checking', 'refreshing', 'scanning'].includes(status.phase)) {
-      return { tone: 'warning', label: 'Восстановление' };
-    }
-    return { tone: 'error', label: 'Ошибка подключения' };
+  if (!status.running && !status.autoConnect) return { tone: 'neutral', label: 'Отключено', detail: 'Прокси остановлен' };
+  if (!status.running) return { tone: 'error', label: 'Ошибка подключения', detail: 'Не удалось восстановить' };
+  if (status.health?.checkedAt && status.health.healthy) {
+    return { tone: 'success', label: 'Работает', detail: 'Проверка успешна' };
   }
-  if (status.health?.checkedAt && status.health.healthy) return { tone: 'success', label: 'Работает' };
-  if (!status.health?.checkedAt) return { tone: 'warning', label: 'Проверка' };
-  if (status.phase === 'retrying') return { tone: 'error', label: 'Ошибка подключения' };
-  return { tone: 'warning', label: 'Есть проблемы' };
+  if (!status.health?.checkedAt) return { tone: 'warning', label: 'Есть проблемы', detail: 'Проверка соединения' };
+  if (status.phase === 'retrying') {
+    return { tone: 'error', label: 'Ошибка подключения', detail: 'Не удалось восстановить' };
+  }
+  return { tone: 'warning', label: 'Есть проблемы', detail: 'Временный сбой' };
 }
 
 async function loadStatus() {
@@ -142,6 +143,8 @@ async function loadStatus() {
   $('connectionBadge').className = 'badge status-' + state.tone;
   $('healthValue').textContent = state.label;
   $('healthValue').className = 'statValue statusState status-' + state.tone;
+  $('healthDetail').textContent = state.detail;
+  $('healthDot').className = 'healthDot status-' + state.tone;
   $('currentServer').textContent = status.connection?.tag || 'Выключено';
   $('currentSub').textContent = status.connection
     ? `${status.connection.subscription} · ${status.connection.protocol.toUpperCase()}`
@@ -151,7 +154,7 @@ async function loadStatus() {
   $('currentAddress').hidden = !endpoint;
   const checkedAt = status.health?.checkedAt;
   $('lastCheck').textContent = checkedAt
-    ? `Проверено ${new Date(checkedAt).toLocaleTimeString('ru-RU')}${status.health.error ? ' · Причина: ' + status.health.error : ''}`
+    ? `Последняя проверка: ${new Date(checkedAt).toLocaleTimeString('ru-RU')}${status.health.error ? ' · Причина: ' + status.health.error : ''}`
     : status.running ? 'Ожидание первой проверки' : 'Нет активного соединения';
   $('exitIP').textContent = status.health?.exitIp || '—';
   $('proxyAddress').textContent = 'SOCKS5 ' + status.proxySocks;
@@ -177,10 +180,8 @@ async function loadStatus() {
   }
 }
 
-async function loadEvents() {
-  const events = await api('/events');
+function renderGatewayEvents() {
   const root = $('gatewayEvents'); root.replaceChildren();
-  if (!events?.length) { root.textContent = 'Событий пока нет'; return; }
   const kinds = {
     connection:'Подключение', health:'Проверка соединения',
     refresh:'Обновление подписки', recovery:'Восстановление', probe:'Проверка сервера'
@@ -188,15 +189,25 @@ async function loadEvents() {
   const levels = {
     success:'Успешно', info:'Информация', warning:'Предупреждение', error:'Ошибка'
   };
-  for (const event of events.slice(0,40)) {
+  const visible = gatewayEventHistory.filter(event => eventFilter === 'all' || event.level === eventFilter);
+  $('eventCount').textContent = `${visible.length} из ${gatewayEventHistory.length}`;
+  if (!visible.length) { root.textContent = 'Нет событий для выбранного фильтра'; return; }
+  const scrollTop = root.scrollTop;
+  for (const event of visible) {
     const item = document.createElement('div');
     const tone = ['success', 'info', 'warning', 'error'].includes(event.level) ? event.level : 'info';
     item.className = 'serverRow eventRow event-' + tone;
     const detail = document.createElement('div');
-    detail.append(textNode('div','serverTitle',`${new Date(event.time).toLocaleString('ru-RU')} · ${kinds[event.kind] || event.kind}`));
-    detail.append(textNode('div','serverSubtitle',`${levels[event.level] || event.level}: ${event.message}`));
+    detail.append(textNode('div', 'serverTitle', `${new Date(event.time).toLocaleString('ru-RU')} · ${kinds[event.kind] || event.kind}`));
+    detail.append(textNode('div', 'serverSubtitle', `${levels[event.level] || event.level}: ${event.message}`));
     item.append(detail); root.append(item);
   }
+  root.scrollTop = scrollTop;
+}
+
+async function loadEvents() {
+  gatewayEventHistory = await api('/events');
+  renderGatewayEvents();
 }
 
 async function openDashboard() {
@@ -244,6 +255,10 @@ $('deleteBtn').addEventListener('click',() => {if(!selected || !confirm(`Уда�
   selected='';await loadStatus();await loadSubscriptions();
 },'Подписка удалена.');});
 $('eventsRefreshBtn').addEventListener('click',()=>action(loadEvents,'История обновлена.'));
+$('eventFilter').addEventListener('change', () => {
+  eventFilter = $('eventFilter').value;
+  renderGatewayEvents();
+});
 $('disconnectBtn').addEventListener('click',() => action(async () => {await api('/disconnect',{method:'POST'});await loadStatus();await loadServers();},'Прокси остановлен.'));
 setInterval(() => {
   if ($('dashboard').hidden) return;

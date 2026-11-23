@@ -33,18 +33,16 @@
     <section id="dashboard" hidden>
       <div class="overview">
         <article class="panel stat"><div class="statLabel">Подключение</div><div id="currentServer" class="statValue">Выключено</div><div id="currentSub" class="muted">Нет активного сервера</div><div id="currentAddress" class="serverEndpoint monospace muted" hidden></div></article>
-        <article class="panel stat"><div class="statLabel">Состояние</div><div id="healthValue" class="statValue statusState">—</div><div id="lastCheck" class="muted">—</div></article>
+        <article class="panel stat healthCard"><div class="statLabel">Состояние подключения</div><div class="healthMain"><span id="healthDot" class="healthDot"></span><div id="healthValue" class="statValue statusState">—</div></div><div id="healthDetail" class="healthDetail muted">Ожидание данных</div><div id="lastCheck" class="muted">—</div></article>
         <article class="panel stat"><div class="statLabel">Внешний IP</div><div id="exitIP" class="statValue monospace">—</div><div id="proxyAddress" class="muted monospace">—</div></article>
       </div>
       <section class="panel" style="margin-bottom:16px">
-        <div class="sectionHeader"><div><h2>Автоматическое восстановление</h2><p>Статус поиска, обновления подписки и повторных попыток.</p></div><button id="eventsRefreshBtn" type="button" class="secondary">Обновить историю</button></div>
+        <div class="sectionHeader"><div><h2>Автоматическое восстановление</h2><p>Мониторинг подключения и поиск рабочего сервера.</p></div></div>
         <div class="recoverySummary"><div class="statLabel">Режим</div><div id="recoveryPhase" class="statValue">—</div></div>
         <div id="recoveryDetails" class="recoveryDetails" hidden>
           <div id="recoveryProgressBlock" hidden><div class="statLabel">Проверено серверов</div><div id="recoveryProgress" class="statValue">—</div></div>
           <div id="recoveryRetryBlock" hidden><div class="statLabel">Следующий повтор</div><div id="recoveryRetry" class="statValue">—</div></div>
         </div>
-        <div class="statLabel">Последние события</div>
-        <div id="gatewayEvents" class="serverList muted" aria-live="polite">Нет записей</div>
       </section>
       <div class="columns">
         <section class="panel">
@@ -61,6 +59,23 @@
           <div id="servers" class="serverList muted">Добавь или выбери подписку.</div>
         </section>
       </div>
+      <section class="panel eventPanel" aria-label="Журнал событий">
+        <div class="sectionHeader"><div><h2>Журнал событий</h2><p>Подключение, проверка серверов, обновление подписок и ошибки.</p></div><button id="eventsRefreshBtn" type="button" class="secondary">Обновить историю</button></div>
+        <div class="eventToolbar">
+          <label for="eventFilter">Журнал событий</label>
+          <div class="eventToolbarControls">
+            <span id="eventCount" class="muted"></span>
+            <select id="eventFilter" aria-label="Фильтр журнала">
+              <option value="all">Все события</option>
+              <option value="error">Ошибки</option>
+              <option value="warning">Предупреждения</option>
+              <option value="success">Успешные</option>
+              <option value="info">Информация</option>
+            </select>
+          </div>
+        </div>
+        <div id="gatewayEvents" class="serverList eventList muted" aria-live="polite">Нет записей</div>
+      </section>
     </section>
     <p id="notice" class="notice" role="status" aria-live="polite"></p>
     <footer>Happ Gateway · Режим SOCKS5 / HTTP proxy · Без изменения маршрутизации хоста</footer>
