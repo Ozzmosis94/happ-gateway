@@ -3,6 +3,7 @@ package web
 import (
  "fmt"
  "encoding/json"
+ "context"
  "os"
  "path/filepath"
  "testing"
@@ -62,4 +63,49 @@ func TestEventsAreBoundedAndPersisted(t *testing.T) {
  restarted,err:=NewManager(Options{Home:dir})
  if err!=nil{t.Fatal(err)}
  if len(restarted.Events())!=maxGatewayEvents{t.Fatal("history was lost on restart")}
+}
+
+func TestScanCandidatesStopsOnFirstHealthyBatch(t *testing.T) {
+ candidates:=make([]nodeCandidate,8)
+ for i:=range candidates {candidates[i].index=i+1}
+ calls:=0
+ run:=func(ctx context.Context,group []nodeCandidate)(probeResult,bool){
+  calls++
+  if len(group)>concurrentProbes {t.Fatalf("batch size=%d",len(group))}
+  if calls==2{return probeResult{candidate:group[0]},true}
+  return probeResult{},false
+ }
+ result,ok:=scanCandidates(context.Background(),candidates,run)
+ if !ok || result.candidate.index!=4 {t.Fatalf("result=%v ok=%v",result.candidate.index,ok)}
+ if calls!=2{t.Fatalf("ran %d batches; expected 2",calls)}
+}
+
+func TestScanCandidatesHonorsCancellation(t *testing.T) {
+ ctx,cancel:=context.WithCancel(context.Background())
+ cancel()
+ calls:=0
+ _,ok:=scanCandidates(ctx,[]nodeCandidate{{index:1}},func(context.Context,[]nodeCandidate)(probeResult,bool){
+  calls++
+  return probeResult{},false
+ })
+ if ok || calls!=0{t.Fatalf("cancelled scan probed %d times",calls)}
+}
+
+func TestReconcileIndexAfterSubscriptionRefresh(t *testing.T) {
+ manager,err:=NewManager(Options{Home:t.TempDir()})
+ if err!=nil{t.Fatal(err)}
+ old:=[]string{
+  "trojan://token@first.example.com:443#first",
+  "trojan://token@second.example.com:443#second",
+ }
+ if err:=manager.store.Upsert(store.SubEntry{Name:"main",URL:"https://example.org/sub",Links:old});err!=nil{t.Fatal(err)}
+ if err:=manager.store.SetLastConnection(&store.ConnectionPreference{Subscription:"main",LinkHash:store.HashLink(old[1])});err!=nil{t.Fatal(err)}
+ manager.current=&Connection{Subscription:"main",Index:2,Tag:"second"}
+ reordered:=[]string{old[1],old[0]}
+ if err:=manager.store.Upsert(store.SubEntry{Name:"main",URL:"https://example.org/sub",Links:reordered});err!=nil{t.Fatal(err)}
+ manager.reconcileCurrentIndexLocked("main")
+ if manager.current.Index!=1{t.Fatalf("reordered index=%d; want 1",manager.current.Index)}
+ if err:=manager.store.Upsert(store.SubEntry{Name:"main",URL:"https://example.org/sub",Links:[]string{old[0]}});err!=nil{t.Fatal(err)}
+ manager.reconcileCurrentIndexLocked("main")
+ if manager.current.Index!=0{t.Fatalf("removed node index=%d; want 0",manager.current.Index)}
 }
