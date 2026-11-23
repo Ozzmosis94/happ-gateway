@@ -51,9 +51,18 @@ function renderSubscriptionMeta() {
   $('activateBtn').disabled = item.active;
   const ui = item.userInfo;
   const used = ui ? Number(ui.Upload || 0) + Number(ui.Download || 0) : 0;
-  const traffic = ui && Number(ui.Total) > 0 ? `${formatBytes(used)} / ${formatBytes(Number(ui.Total))}` : 'нет информации';
-  const expire = ui && ui.Expire && !ui.Expire.startsWith('0001-') ? new Date(ui.Expire).toLocaleDateString('ru-RU') : 'неизвестно';
-  $('subMeta').textContent = `${item.title || item.name}\nСерверов: ${item.count} · Трафик: ${traffic}\nИстекает: ${expire}${item.active ? ' · Активная подписка' : ''}`;
+  let details = `Серверов: ${item.count}`;
+  if (ui && Number(ui.Total) > 0) {
+    details += ` · Трафик: ${formatBytes(used)} / ${formatBytes(Number(ui.Total))}`;
+  } else if (ui && used > 0) {
+    details += ` · Израсходовано: ${formatBytes(used)}`;
+  }
+  if (item.active) details += ' · Активная подписка';
+  if (ui?.Expire && !ui.Expire.startsWith('0001-')) {
+    const expiry = new Date(ui.Expire);
+    if (!Number.isNaN(expiry.getTime())) details += `\nИстекает: ${expiry.toLocaleDateString('ru-RU')}`;
+  }
+  $('subMeta').textContent = `${item.title || item.name}\n${details}`;
 }
 
 async function loadSubscriptions() {
@@ -92,7 +101,8 @@ async function loadServers() {
     const row = document.createElement('div'); row.className = 'serverRow' + (active ? ' connected' : '');
     const description = document.createElement('div');
     description.append(textNode('div','serverTitle',`${server.index}. ${server.tag || server.address}`));
-    description.append(textNode('div','serverSubtitle',`${server.protocol.toUpperCase()} · ${server.address}:${server.port}${server.supported ? '' : ' · Не поддерживается'}`));
+    description.append(textNode('div','serverAddress monospace',formatEndpoint(server.address, server.port)));
+    description.append(textNode('div','serverSubtitle',`${server.protocol.toUpperCase()}${server.supported ? '' : ' · Не поддерживается'}`));
     const button = textNode('button',active ? 'secondary' : 'primary',active ? 'Подключено' : 'Подключиться');
     button.type = 'button'; button.disabled = !server.supported || active;
     button.addEventListener('click', () => action(async () => {
@@ -103,34 +113,89 @@ async function loadServers() {
   }
 }
 
-async function loadStatus() {
-  const status = await api('/status');
-  currentStatus = status;
-  const verified = status.running && status.health.checkedAt && status.health.healthy;
-  $('connectionBadge').textContent = verified ? 'Соединение работает' : status.running ? 'Проверка / восстановление' : status.autoConnect ? 'Поиск сервера' : 'Отключено';
-  $('connectionBadge').className = verified ? 'badge running' : 'badge';
-  $('currentServer').textContent = status.connection?.tag || 'Выключено';
-  $('currentSub').textContent = status.connection ? `${status.connection.subscription} · ${status.connection.protocol.toUpperCase()}` : 'Нет активного сервера';
-  $('healthValue').textContent = !status.running ? '—' : !status.health.checkedAt ? 'Ожидание проверки' : status.health.healthy ? 'Работает' : 'Ошибка проверки';
-  $('lastCheck').textContent = status.health.checkedAt ? `Проверено ${new Date(status.health.checkedAt).toLocaleTimeString('ru-RU')}${status.health.error ? ' · ' + status.health.error : ''}` : 'Нет измерений';
-  $('exitIP').textContent = status.health.exitIp || '—';
-  $('proxyAddress').textContent = 'SOCKS5 ' + status.proxySocks;
-  const phases={connected:'Работает',checking:'Проверка',refreshing:'Обновление',scanning:'Выбор узла',retrying:'Ожидание повтора',degraded:'Сбой',disabled:'Отключено',connecting:'Подключение'};
-  $('recoveryPhase').textContent=phases[status.phase]|| (status.autoConnect?'Автоматический':'Отключён');
-  $('recoveryProgress').textContent=`${status.checked||0} из ${status.total||0}`;
-  $('recoveryRetry').textContent=status.retryAt?new Date(status.retryAt).toLocaleTimeString('ru-RU'):'—';
+function formatEndpoint(address, port) {
+  if (!address) return '';
+  const host = address.includes(':') && !address.startsWith('[') ? `[${address}]` : address;
+  return port ? `${host}:${port}` : host;
 }
 
-async function loadEvents(){
-  const events=await api('/events');
-  const root=$('gatewayEvents');root.replaceChildren();
-  if(!events?.length){root.textContent='Событий пока нет';return;}
-  for(const event of events.slice(0,40)){
-    const item=document.createElement('div');item.className='serverRow';
-    const detail=document.createElement('div');
-    detail.append(textNode('div','serverTitle',`${new Date(event.time).toLocaleString('ru-RU')} · ${event.kind} · ${event.level}`));
-    detail.append(textNode('div','serverSubtitle',event.message));
-    item.append(detail);root.append(item);
+function connectionState(status) {
+  if (!status.running && !status.autoConnect) return { tone: 'neutral', label: 'Отключено' };
+  if (!status.running) {
+    if (['connecting', 'checking', 'refreshing', 'scanning'].includes(status.phase)) {
+      return { tone: 'warning', label: 'Восстановление' };
+    }
+    return { tone: 'error', label: 'Ошибка подключения' };
+  }
+  if (status.health?.checkedAt && status.health.healthy) return { tone: 'success', label: 'Работает' };
+  if (!status.health?.checkedAt) return { tone: 'warning', label: 'Проверка' };
+  if (status.phase === 'retrying') return { tone: 'error', label: 'Ошибка подключения' };
+  return { tone: 'warning', label: 'Есть проблемы' };
+}
+
+async function loadStatus() {
+  const status = await api('/status');
+  const previous = currentStatus;
+  currentStatus = status;
+  const state = connectionState(status);
+  $('connectionBadge').textContent = state.label;
+  $('connectionBadge').className = 'badge status-' + state.tone;
+  $('healthValue').textContent = state.label;
+  $('healthValue').className = 'statValue statusState status-' + state.tone;
+  $('currentServer').textContent = status.connection?.tag || 'Выключено';
+  $('currentSub').textContent = status.connection
+    ? `${status.connection.subscription} · ${status.connection.protocol.toUpperCase()}`
+    : 'Нет активного сервера';
+  const endpoint = formatEndpoint(status.connection?.address, status.connection?.port);
+  $('currentAddress').textContent = endpoint;
+  $('currentAddress').hidden = !endpoint;
+  const checkedAt = status.health?.checkedAt;
+  $('lastCheck').textContent = checkedAt
+    ? `Проверено ${new Date(checkedAt).toLocaleTimeString('ru-RU')}${status.health.error ? ' · Причина: ' + status.health.error : ''}`
+    : status.running ? 'Ожидание первой проверки' : 'Нет активного соединения';
+  $('exitIP').textContent = status.health?.exitIp || '—';
+  $('proxyAddress').textContent = 'SOCKS5 ' + status.proxySocks;
+  const phases = {
+    connected:'Мониторинг активен', checking:'Проверка подключения',
+    refreshing:'Обновление подписки', scanning:'Поиск рабочего сервера',
+    retrying:'Ожидание восстановления', degraded:'Обнаружены проблемы',
+    disabled:'Отключено', connecting:'Первичная проверка'
+  };
+  $('recoveryPhase').textContent = phases[status.phase]
+    || (status.autoConnect ? 'Мониторинг активен' : 'Отключено');
+  const scanning = ['checking', 'refreshing', 'scanning'].includes(status.phase) && status.total > 0;
+  const retrying = status.phase === 'retrying' && !!status.retryAt;
+  $('recoveryProgressBlock').hidden = !scanning;
+  $('recoveryRetryBlock').hidden = !retrying;
+  $('recoveryDetails').hidden = !scanning && !retrying;
+  if (scanning) $('recoveryProgress').textContent = `${status.checked || 0} из ${status.total}`;
+  if (retrying) $('recoveryRetry').textContent = new Date(status.retryAt).toLocaleTimeString('ru-RU');
+  if (selected && (previous?.running !== status.running ||
+      previous?.connection?.subscription !== status.connection?.subscription ||
+      previous?.connection?.index !== status.connection?.index)) {
+    await loadServers();
+  }
+}
+
+async function loadEvents() {
+  const events = await api('/events');
+  const root = $('gatewayEvents'); root.replaceChildren();
+  if (!events?.length) { root.textContent = 'Событий пока нет'; return; }
+  const kinds = {
+    connection:'Подключение', health:'Проверка соединения',
+    refresh:'Обновление подписки', recovery:'Восстановление', probe:'Проверка сервера'
+  };
+  const levels = {
+    success:'Успешно', info:'Информация', warning:'Предупреждение', error:'Ошибка'
+  };
+  for (const event of events.slice(0,40)) {
+    const item = document.createElement('div');
+    const tone = ['success', 'info', 'warning', 'error'].includes(event.level) ? event.level : 'info';
+    item.className = 'serverRow eventRow event-' + tone;
+    const detail = document.createElement('div');
+    detail.append(textNode('div','serverTitle',`${new Date(event.time).toLocaleString('ru-RU')} · ${kinds[event.kind] || event.kind}`));
+    detail.append(textNode('div','serverSubtitle',`${levels[event.level] || event.level}: ${event.message}`));
+    item.append(detail); root.append(item);
   }
 }
 
