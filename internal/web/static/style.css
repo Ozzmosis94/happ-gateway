@@ -21,3 +21,25 @@
 .eventRow.event-error{border-left:3px solid #e46e80}
 .eventRow.event-success{border-left:3px solid #3caa88}
 @media(max-width:560px){.recoveryDetails{grid-template-columns:1fr}}
+
+/* Dashboard card spacing, clear status and compact scrollable events */
+.dashboardLayout{display:grid;gap:16px}
+#dashboard>.overview{margin-bottom:16px;gap:16px}
+#dashboard>.panel{margin-bottom:16px}
+.healthMain{display:flex;align-items:center;gap:12px;margin:0 0 7px}
+.healthMain .statValue{margin:0}
+.healthDot{width:13px;height:13px;border-radius:50%;flex:none;background:#8492ad;box-shadow:0 0 0 4px #8492ad22}
+.healthDot.status-success{background:#68e5bf;box-shadow:0 0 0 4px #68e5bf22}
+.healthDot.status-warning{background:#ffc47b;box-shadow:0 0 0 4px #ffc47b22}
+.healthDot.status-error{background:#ff8e9f;box-shadow:0 0 0 4px #ff8e9f22}
+.healthDot.status-neutral{background:#8492ad;box-shadow:0 0 0 4px #8492ad22}
+.healthDetail{font-size:13px;margin-bottom:11px}
+.eventToolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:4px 0 14px}
+.eventToolbar>label{font-size:13px;color:#b0bdd1;font-weight:650}
+.eventToolbarControls{display:flex;align-items:center;gap:12px}
+.eventToolbar select{min-width:165px;padding:9px 11px}
+.eventList{max-height:360px;overflow-y:auto;overscroll-behavior:contain;padding:3px 8px 3px 0;scrollbar-gutter:stable}
+.eventList .serverRow{margin-bottom:0}
+.recoverySummary{margin-bottom:20px}
+.recoveryDetails{gap:16px}
+@media(max-width:560px){.eventToolbar{align-items:stretch;flex-direction:column}.eventToolbarControls{justify-content:space-between}.eventToolbar select{min-width:0}}
