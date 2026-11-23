@@ -71,6 +71,8 @@ type Connection struct {
 	Subscription string    `json:"subscription"`
 	Index        int       `json:"index"`
 	Tag          string    `json:"tag"`
+	Address      string    `json:"address"`
+	Port         int       `json:"port"`
 	Protocol     string    `json:"protocol"`
 	StartedAt    time.Time `json:"startedAt"`
 }
@@ -300,14 +302,14 @@ func (m *Manager) connectLocked(name string,index int) error {
 		return fmt.Errorf("persist selected server: %w", err)
 	}
 	m.instance = inst
-	m.current = &Connection{Subscription: name, Index: index, Tag: s.Tag, Protocol: s.Protocol, StartedAt: time.Now()}
+	m.current = &Connection{Subscription: name, Index: index, Tag: s.Tag, Address: s.Address, Port: s.Port, Protocol: s.Protocol, StartedAt: time.Now()}
 	m.health = Health{}
  m.failures=0
  m.retryFailures=0
  m.phase="connecting"
  m.generation++
 	if err:=m.store.SetAutoConnect(true);err!=nil {log.Printf("cannot save automatic mode: %v",err)}
- m.appendEventLocked("connection","info",fmt.Sprintf("Запущен сервер %s, проверяется доступность",s.Tag))
+ m.appendEventLocked("connection","info",fmt.Sprintf("Запущен сервер %s (%s:%d), проверяется доступность",s.Tag,s.Address,s.Port))
 	go m.checkOnce() // Check immediately after connecting; stale results are generation-guarded.
 	return nil
 }
@@ -451,10 +453,15 @@ func (m *Manager) checkOnce() {
  m.mu.Lock()
  if m.instance==nil || generation!=m.generation{m.mu.Unlock();return}
  previous:=m.health.Healthy
+ hadPrevious:=m.health.CheckedAt!=nil
  m.health=Health{CheckedAt:&now,Healthy:err==nil}
- if err==nil {m.health.ExitIP=ip; m.phase="connected"}else{
+ if err==nil {
+  m.health.ExitIP=ip
+  m.phase="connected"
+  if hadPrevious && !previous {m.appendEventLocked("health","success","Соединение снова доступно")}
+ }else{
   m.health.Error=err.Error()
-  if previous{m.phase="degraded";m.appendEventLocked("health","warning","Проверка соединения не пройдена") }
+  if previous{m.phase="degraded";m.appendEventLocked("health","warning",fmt.Sprintf("Проверка соединения не пройдена: %v",err))}
  }
  record:=err==nil && hash!="" && (!previous || now.Sub(m.history[hash].LastSuccess)>time.Hour)
  m.mu.Unlock()
