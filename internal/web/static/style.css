@@ -43,3 +43,6 @@
 .recoverySummary{margin-bottom:20px}
 .recoveryDetails{gap:16px}
 @media(max-width:560px){.eventToolbar{align-items:stretch;flex-direction:column}.eventToolbarControls{justify-content:space-between}.eventToolbar select{min-width:0}}
+
+/* Keep the diagnostic log after subscriptions and servers, at the bottom. */
+#dashboard>.eventPanel{margin-top:16px;margin-bottom:0}
